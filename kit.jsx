@@ -1,346 +1,277 @@
+// SHARED KIT — store, helpers, and UI primitives
 
-// REVIEW MODE — event-log replay with scrubber, AAR generation
+const { createContext, useContext, useEffect, useMemo, useRef, useState } = React;
 
-const { useState: rUseState, useEffect: rUseEffect, useMemo: rUseMemo } = React;
+const StoreCtx = createContext(null);
+const LS = {
+  scenario: 'sx.scenario.v1',
+  events: 'sx.events.v1',
+  me: 'sx.me.v1',
+};
 
-function Review() {
-  const { scenario, events, state, realTime, scrubT, setScrubT, derived } = useStore();
-  const [playing, setPlaying] = rUseState(false);
-  const [playSpeed, setPlaySpeed] = rUseState(4);
-  const [tab, setTab] = rUseState('timeline'); // timeline | aar
+function lsGet(key) {
+  try { return window.localStorage.getItem(key); } catch { return null; }
+}
+function lsSet(key, value) {
+  try { window.localStorage.setItem(key, value); } catch {}
+}
+function lsRemove(key) {
+  try { window.localStorage.removeItem(key); } catch {}
+}
 
-  const duration = Math.max(realTime, scenario.phases[scenario.phases.length - 1].start + 600);
-  const currentT = scrubT ?? realTime;
+function safeJSONParse(v, fallback) {
+  try { return JSON.parse(v); } catch { return fallback; }
+}
 
-  rUseEffect(() => {
-    if (!playing) return;
-    const id = setInterval(() => setScrubT(t => {
-      const cur = t ?? 0;
-      const next = cur + playSpeed;
-      if (next >= duration) { setPlaying(false); return duration; }
-      return next;
-    }), 100);
-    return () => clearInterval(id);
-  }, [playing, playSpeed, duration]);
+function normalizeScenario(raw) {
+  if (!raw || typeof raw !== 'object') return baseScenario;
+  if (!Array.isArray(raw.injects) || !Array.isArray(raw.teams) || !Array.isArray(raw.phases)) return baseScenario;
+  return {
+    ...baseScenario,
+    ...raw,
+    injects: raw.injects.map((inj, idx) => ({
+      ...baseScenario.injects[0],
+      ...inj,
+      ord: inj.ord || idx + 1,
+      targets: Array.isArray(inj.targets) ? inj.targets : [],
+      caps: Array.isArray(inj.caps) ? inj.caps : [],
+      objs: Array.isArray(inj.objs) ? inj.objs : [],
+      planRefs: Array.isArray(inj.planRefs) ? inj.planRefs : [],
+    })),
+    teams: Array.isArray(raw.teams) ? raw.teams : baseScenario.teams,
+    phases: Array.isArray(raw.phases) ? raw.phases : baseScenario.phases,
+    objectives: Array.isArray(raw.objectives) ? raw.objectives : baseScenario.objectives,
+  };
+}
 
-  if (state !== 'ended' && events.length === 0) {
-    return <div style={{ padding: 60, textAlign: 'center' }}>
-      <Mono color="var(--t3)" style={{ letterSpacing: '0.12em' }}>NO DATA TO REVIEW YET</Mono>
-      <p style={{ color: 'var(--t2)', fontSize: 13, marginTop: 12 }}>Start and run the exercise, then return here for replay and AAR.</p>
-    </div>;
+function normalizeMe(raw, seededRole, seededTeam, seededSeat, access) {
+  if (!raw || typeof raw !== 'object') return { role: seededRole, teamId: seededTeam, seat: seededSeat, name: seededRole === 'facilitator' ? 'Exercise Director' : 'Participant', access };
+  return {
+    role: raw.role || seededRole,
+    teamId: raw.teamId || seededTeam,
+    seat: raw.seat || seededSeat,
+    name: raw.name || (seededRole === 'facilitator' ? 'Exercise Director' : 'Participant'),
+    access: raw.access || access,
+  };
+}
+
+function decodeAccessToken(raw) {
+  if (!raw) return null;
+  try {
+    const [payloadB64, sig] = raw.split('.');
+    if (!payloadB64 || !sig) return null;
+    const json = atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/'));
+    const payload = JSON.parse(json);
+    if (!payload.role || !payload.teamId) return null;
+    const expectedSig = btoa(`${payload.role}:${payload.teamId}:${payload.seat || 'eoc_lead'}`).replace(/=/g, '');
+    if (sig !== expectedSig) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+const scenarioLibrarySeed = [
+  {
+    id: 'lib-1',
+    name: 'Cross-Border Outbreak Coordination Exercise',
+    provenance: 'Starter Pack · WHO SimEx style',
+    type: 'Functional',
+    framework: 'WHO Simulation Exercise Framework (SimEx)',
+    concept: 'A rapidly evolving multi-country respiratory outbreak requires synchronized surveillance, risk communication, and operations coordination.',
+  },
+  {
+    id: 'lib-2',
+    name: 'Heatwave Mass Casualty Surge',
+    provenance: 'Starter Pack · Regional adaptation',
+    type: 'Tabletop',
+    framework: 'NHS England EPRR-aligned',
+    concept: 'Extreme heat drives simultaneous ED surge, ambulance delays, and care-home support requests.',
+  },
+  {
+    id: 'lib-3',
+    name: 'Cyclone + Cholera Compound Emergency',
+    provenance: 'Starter Pack · OCHA style',
+    type: 'Functional',
+    framework: 'OCHA multi-cluster coordination',
+    concept: 'Storm damage and displacement create WASH pressure and cross-border humanitarian coordination demands.',
+  },
+];
+
+const baseScenario = {
+  ...scenarioLibrarySeed[0],
+  phases: [
+    { id: 'p1', name: 'Detection', start: 0, hue: 195 },
+    { id: 'p2', name: 'Escalation', start: 900, hue: 25 },
+    { id: 'p3', name: 'Response', start: 2100, hue: 65 },
+    { id: 'p4', name: 'Recovery', start: 3300, hue: 145 },
+  ],
+  teams: [
+    { id: 't1', name: 'Surveillance Unit', lead: 'Dr. Mensah', hue: 195 },
+    { id: 't2', name: 'Operations Cell', lead: 'A. Patel', hue: 25 },
+    { id: 't3', name: 'Risk Comms Team', lead: 'L. Chen', hue: 280 },
+    { id: 't4', name: 'Border Health', lead: 'R. Alvarez', hue: 145 },
+  ],
+  capabilities: ['Surveillance', 'Incident Mgmt', 'Lab', 'Risk Communication', 'Border Health', 'Logistics'],
+  objectives: [
+    { id: 'o1', code: 'OBJ-1', text: 'Detect and verify signals within agreed operational timelines.' },
+    { id: 'o2', code: 'OBJ-2', text: 'Coordinate multi-sector incident management decisions.' },
+    { id: 'o3', code: 'OBJ-3', text: 'Issue clear, timely, and trusted public communication.' },
+  ],
+  injects: [
+    { id: 'i01', ord: 1, phase: 'p1', scheduledT: 120, type: 'scheduled', channel: 'alert', planRefs: ['Border Health SOP §2.1'], title: 'Unusual cluster reported at border district clinic', content: 'District clinic reports 14 cases of severe respiratory illness in 24 hours. Request triage and verification plan.', targets: ['t1', 't4'], caps: ['Surveillance', 'Border Health'], objs: ['o1'] },
+    { id: 'i02', ord: 2, phase: 'p1', scheduledT: 420, type: 'scheduled', channel: 'email', planRefs: ['Lab Surge Plan §4.2'], title: 'Laboratory sample transport delay', content: 'Specimen transport is delayed due to weather. Decide interim case classification and notification actions.', targets: ['t1', 't2'], caps: ['Lab', 'Incident Mgmt'], objs: ['o1', 'o2'] },
+    { id: 'i03', ord: 3, phase: 'p2', scheduledT: 1080, type: 'scheduled', channel: 'news', planRefs: ['Risk Comms Plan §3.1'], title: 'Media leak and public concern spike', content: 'Unverified social media post claims "new deadly virus". Prepare coordinated public holding statement.', targets: ['t3', 't2'], caps: ['Risk Communication', 'Incident Mgmt'], objs: ['o3'] },
+    { id: 'i04', ord: 4, phase: 'p3', scheduledT: 2280, type: 'conditional', channel: 'phone', planRefs: ['Rumour Management SOP §1.3'], rule: { trigger: 'no_ack', onInject: 'i03', byTeam: 't3', thresholdMin: 10 }, title: 'Rumor amplification and hotline surge', content: 'Hotline volume triples following misinformation spread. Adjust rumor management and staffing posture.', targets: ['t3', 't2'], caps: ['Risk Communication', 'Logistics'], objs: ['o2', 'o3'] },
+    { id: 'i05', ord: 5, phase: 'p3', scheduledT: 2520, type: 'scheduled', channel: 'dm', planRefs: ['Cross-Border Protocol §7.4'], title: 'Cross-border coordination call request', content: 'Neighboring country requests joint situational brief and protocol alignment for points of entry.', targets: ['t4', 't2'], caps: ['Border Health', 'Incident Mgmt'], objs: ['o2'] },
+    { id: 'i06', ord: 6, phase: 'p4', scheduledT: 3420, type: 'scheduled', channel: 'email', planRefs: ['Recovery Plan §5.1'], title: 'Transition to recovery planning', content: 'Case trend stabilizes. Draft transition priorities and lessons capture process for next operational period.', targets: ['t1', 't2', 't3', 't4'], caps: ['Incident Mgmt'], objs: ['o2'] },
+  ],
+};
+
+function deriveFrom(scenario, events) {
+  const sent = [];
+  const notes = [];
+  const chats = [];
+  const evals = {};
+  const actions = [];
+  const artefacts = [];
+
+  for (const e of events) {
+    if (e.type === 'SEND') sent.push({ id: e.injectId, t: e.t });
+    else if (e.type === 'NOTE') notes.push({ t: e.t, by: e.by, text: e.text });
+    else if (e.type === 'CHAT') chats.push({ t: e.t, teamId: e.teamId, sender: e.sender, text: e.text });
+    else if (e.type === 'EVAL') evals[e.injectId] = e.rating;
+    else if (e.type === 'ACTION') actions.push(e);
+    else if (e.type === 'ARTEFACT') artefacts.push(e);
   }
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <header style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 16 }}>
-        <div>
-          <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>After-Action Review</h1>
-          <p style={{ fontSize: 11, color: 'var(--t3)', margin: '3px 0 0' }}>{events.length} events captured · {fmtT(realTime)} exercise duration</p>
-        </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 2, background: 'var(--elev)', padding: 3, borderRadius: 7, border: '1px solid var(--border)' }}>
-          {[['timeline', 'Timeline replay'], ['aar', 'AAR report']].map(([id, lbl]) => (
-            <button key={id} onClick={() => setTab(id)} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, border: 'none', background: tab === id ? 'var(--accent)' : 'transparent', color: tab === id ? '#fff' : 'var(--t3)', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit' }}>{lbl}</button>
-          ))}
-        </div>
-      </header>
-
-      {tab === 'timeline' && <TimelineReplay duration={duration} currentT={currentT} playing={playing} setPlaying={setPlaying} playSpeed={playSpeed} setPlaySpeed={setPlaySpeed} />}
-      {tab === 'aar' && <AARReport />}
-    </div>
-  );
+  return { sent, notes, chats, evals, actions, artefacts };
 }
 
-function TimelineReplay({ duration, currentT, playing, setPlaying, playSpeed, setPlaySpeed }) {
-  const { scenario, events, setScrubT, derived } = useStore();
-
-  // Events up to currentT, reversed for recency
-  const shownEvents = events.filter(e => e.t <= currentT).slice(-50).reverse();
-
-  return (
-    <div style={{ flex: 1, display: 'grid', gridTemplateRows: '1fr auto', overflow: 'hidden' }}>
-      {/* Replay canvas */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 400px', overflow: 'hidden' }}>
-        <div style={{ padding: 24, overflowY: 'auto' }}>
-          <ReplayBoard currentT={currentT} />
-        </div>
-        <aside style={{ borderLeft: '1px solid var(--border)', background: 'var(--surface)', overflowY: 'auto' }}>
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
-            <Mono style={{ letterSpacing: '0.08em' }}>EVENT STREAM · T+{fmtT(currentT)}</Mono>
-          </div>
-          <div>
-            {shownEvents.map((e, i) => <EventRow key={events.length - i} e={e} scenario={scenario} />)}
-          </div>
-        </aside>
-      </div>
-
-      {/* Scrubber */}
-      <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', background: 'var(--surface)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12 }}>
-          <Btn size="md" variant={playing ? 'danger' : 'primary'} onClick={() => setPlaying(p => !p)}>{playing ? '⏸ Pause' : '▶ Play'}</Btn>
-          <div style={{ display: 'flex', gap: 3, background: 'var(--bg)', padding: 3, borderRadius: 6, border: '1px solid var(--border)' }}>
-            {[1, 4, 10, 30].map(s => <button key={s} onClick={() => setPlaySpeed(s)} style={{ padding: '4px 9px', fontSize: 11, fontWeight: 600, background: playSpeed === s ? 'var(--accent)' : 'transparent', color: playSpeed === s ? '#fff' : 'var(--t3)', border: 'none', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit' }}>{s}×</button>)}
-          </div>
-          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 20, fontWeight: 700, color: 'var(--t1)' }}>{fmtT(currentT)}</div>
-          <div style={{ flex: 1 }} />
-          <Mono>{fmtT(duration)} total</Mono>
-        </div>
-        <Scrubber duration={duration} currentT={currentT} onScrub={setScrubT} />
-      </div>
-    </div>
-  );
+function phaseAt(phases, t) {
+  return [...phases].sort((a, b) => a.start - b.start).reduce((acc, p) => t >= p.start ? p : acc, phases[0]);
 }
 
-function Scrubber({ duration, currentT, onScrub }) {
-  const { scenario, events } = useStore();
-  // Event density marks
-  return (
-    <div style={{ position: 'relative', height: 56 }}>
-      {/* Phase bands */}
-      <div style={{ position: 'absolute', inset: '14px 0 34px', borderRadius: 4, overflow: 'hidden', display: 'flex' }}>
-        {scenario.phases.map((p, i) => {
-          const end = scenario.phases[i + 1]?.start ?? duration;
-          return <div key={p.id} style={{ width: `${((end - p.start) / duration) * 100}%`, background: `color-mix(in oklch, ${hueColor(p.hue)} 20%, var(--elev))`, borderRight: '1px solid var(--bg)', position: 'relative' }}>
-            <div style={{ position: 'absolute', inset: 0, padding: '5px 8px', fontSize: 9, fontWeight: 700, color: hueColor(p.hue, 70), letterSpacing: '0.06em', textTransform: 'uppercase' }}>{p.name}</div>
-          </div>;
-        })}
-      </div>
+function StoreProvider({ children }) {
+  const params = new URLSearchParams(window.location.search);
+  const tokenPayload = decodeAccessToken(params.get('access'));
+  const seededRole = tokenPayload?.role || params.get('role') || 'facilitator';
+  const seededTeam = tokenPayload?.teamId || params.get('team') || 't1';
+  const seededSeat = tokenPayload?.seat || params.get('seat') || 'eoc_lead';
+  const [scenario, setScenario] = useState(() => normalizeScenario(safeJSONParse(lsGet(LS.scenario), baseScenario)));
+  const [scenarioLibrary, setScenarioLibrary] = useState(scenarioLibrarySeed);
+  const [state, setState] = useState('idle');
+  const [time, setTime] = useState(0);
+  const [speed, setSpeed] = useState(1);
+  const [events, setEvents] = useState(() => {
+    const restored = safeJSONParse(lsGet(LS.events), []);
+    return Array.isArray(restored) ? restored : [];
+  });
+  const [scrubT, setScrubT] = useState(null);
+  const [me, setMe] = useState(() => {
+    const access = tokenPayload ? 'signed-link' : 'magic-link-mock';
+    const saved = safeJSONParse(lsGet(LS.me), null);
+    return normalizeMe(saved, seededRole, seededTeam, seededSeat, access);
+  });
 
-      {/* Event marks */}
-      {events.map((e, i) => {
-        const colors = { SEND: 'var(--accent)', ACK: 'var(--green)', CHAT: 'var(--t2)', NOTE: 'var(--amber)', EVAL: 'var(--accent)' };
-        return <div key={i} style={{ position: 'absolute', left: `${(e.t / duration) * 100}%`, top: 14, width: 1.5, height: 8, background: colors[e.type] || 'var(--t3)', opacity: 0.6 }} />;
-      })}
+  const timerRef = useRef(null);
+  const derived = useMemo(() => deriveFrom(scenario, events), [scenario, events]);
 
-      {/* Playhead */}
-      <div style={{ position: 'absolute', left: `${(currentT / duration) * 100}%`, top: 8, bottom: 24, width: 2, background: 'var(--red)', pointerEvents: 'none', boxShadow: '0 0 0 3px color-mix(in oklch, var(--red) 20%, transparent)' }} />
+  useEffect(() => {
+    if (state !== 'live') return;
+    timerRef.current = setInterval(() => setTime(t => t + speed), 1000);
+    return () => clearInterval(timerRef.current);
+  }, [state, speed]);
 
-      {/* Slider */}
-      <input type="range" min={0} max={duration} value={currentT} onChange={e => onScrub(+e.target.value)} style={{ position: 'absolute', inset: '14px 0 34px', width: '100%', opacity: 0, cursor: 'pointer', height: 'auto' }} />
+  useEffect(() => { lsSet(LS.scenario, JSON.stringify(scenario)); }, [scenario]);
+  useEffect(() => { lsSet(LS.events, JSON.stringify(events)); }, [events]);
+  useEffect(() => { lsSet(LS.me, JSON.stringify(me)); }, [me]);
 
-      {/* Tick labels */}
-      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, display: 'flex', justifyContent: 'space-between' }}>
-        {[0, 0.25, 0.5, 0.75, 1].map(f => <Mono key={f} style={{ fontSize: 9 }}>{fmtT(duration * f)}</Mono>)}
-      </div>
-    </div>
-  );
-}
+  const pushEvent = (e) => setEvents(prev => [...prev, e]);
+  const start = () => { setState('live'); setTime(0); setEvents([]); setScrubT(null); };
+  const pause = () => setState('paused');
+  const resume = () => setState('live');
+  const end = () => setState('ended');
 
-function ReplayBoard({ currentT }) {
-  const { scenario, events, derive } = useStore();
-  const snapshot = rUseMemo(() => {
-    // Rederive at currentT
-    const sent = []; const acks = {}; const evals = {}; const dials = { epi: 20, ops: 15, comms: 25, public: 10 };
-    for (const e of events) {
-      if (e.t > currentT) break;
-      if (e.type === 'SEND') sent.push({ id: e.injectId, t: e.t });
-      else if (e.type === 'ACK') acks[e.injectId + '-' + e.teamId] = { t: e.t };
-      else if (e.type === 'EVAL') evals[e.injectId] = e.rating;
-      else if (e.type === 'DIAL') dials[e.key] = e.value;
-    }
-    return { sent, acks, evals, dials };
-  }, [events, currentT]);
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <Section label="Scenario state at this moment">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-          {[['epi', 'Epi pressure', 25], ['ops', 'Ops load', 65], ['comms', 'Comms', 195], ['public', 'Public concern', 280]].map(([k, l, h]) => (
-            <Card key={k} style={{ padding: 12 }}>
-              <Mono>{l}</Mono>
-              <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: hueColor(h), marginTop: 4 }}>{snapshot.dials[k]}</div>
-              <div style={{ height: 3, background: 'var(--elev)', borderRadius: 2, marginTop: 6 }}>
-                <div style={{ height: '100%', width: `${snapshot.dials[k]}%`, background: hueColor(h), transition: 'width .2s' }} />
-              </div>
-            </Card>
-          ))}
-        </div>
-      </Section>
-
-      <Section label="Injects fired by this point">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {snapshot.sent.slice().reverse().map(s => {
-            const inj = scenario.injects.find(i => i.id === s.id);
-            if (!inj) return null;
-            const ackCount = inj.targets.filter(tid => snapshot.acks[s.id + '-' + tid]).length;
-            return <div key={s.id + s.t} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '10px 12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 7 }}>
-              <Mono color="var(--accent)" style={{ minWidth: 54 }}>T+{fmtMMSS(s.t)}</Mono>
-              <div style={{ fontSize: 12, color: 'var(--t1)', flex: 1 }}>{inj.title}</div>
-              <Mono>{ackCount}/{inj.targets.length} ack</Mono>
-              {snapshot.evals[inj.id] && <Chip small hue={snapshot.evals[inj.id] === 'Exceeded' ? 145 : snapshot.evals[inj.id] === 'Achieved' ? 150 : 55}>{snapshot.evals[inj.id]}</Chip>}
-            </div>;
-          })}
-          {snapshot.sent.length === 0 && <Empty>No injects fired yet at T+{fmtT(currentT)}</Empty>}
-        </div>
-      </Section>
-    </div>
-  );
-}
-
-function EventRow({ e, scenario }) {
-  const kinds = {
-    SEND: { c: 'var(--accent)', label: 'SEND', render: p => { const inj = scenario.injects.find(i => i.id === p.injectId); return inj?.title || p.injectId; } },
-    ACK:  { c: 'var(--green)',  label: 'ACK',  render: p => { const t = scenario.teams.find(t => t.id === p.teamId); return `${t?.name || p.teamId} · ${p.by || ''}`; } },
-    EVAL: { c: 'var(--accent)', label: 'EVAL', render: p => p.rating },
-    CHAT: { c: 'var(--t2)',     label: 'CHAT', render: p => `${p.sender}: ${p.text}` },
-    NOTE: { c: 'var(--amber)',  label: 'NOTE', render: p => `${p.by}: ${p.text}` },
-    DIAL: { c: 'var(--accent)', label: 'DIAL', render: p => `${p.key} = ${p.value}` },
-    DECISION: { c: 'var(--red)', label: 'DECISION', render: p => p.text },
+  const sendInject = (injectId) => {
+    if (derived.sent.some(s => s.id === injectId)) return;
+    pushEvent({ type: 'SEND', injectId, t: time, hash: 'evt-' + (events.length + 1).toString(16) });
   };
-  const k = kinds[e.type];
-  if (!k) return null;
-  return <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 12, fontSize: 12, alignItems: 'flex-start' }}>
-    <Mono style={{ minWidth: 50, color: 'var(--t3)' }}>T+{fmtMMSS(e.t)}</Mono>
-    <Mono color={k.c} style={{ minWidth: 44, fontWeight: 700 }}>{k.label}</Mono>
-    <div style={{ flex: 1, color: 'var(--t1)', lineHeight: 1.5 }}>{k.render(e)}</div>
-  </div>;
-}
+  const addNote = (by, text) => pushEvent({ type: 'NOTE', by, text, t: time, hash: 'evt-' + (events.length + 1).toString(16) });
+  const chat = (teamId, sender, text) => pushEvent({ type: 'CHAT', teamId, sender, text, t: time, hash: 'evt-' + (events.length + 1).toString(16) });
+  const setEval = (injectId, rating) => pushEvent({ type: 'EVAL', injectId, rating, t: time, hash: 'evt-' + (events.length + 1).toString(16) });
+  const logAction = (teamId, injectId, actor, text, consulted = '') => pushEvent({ type: 'ACTION', teamId, injectId, actor, text, consulted, t: time, hash: 'evt-' + (events.length + 1).toString(16) });
+  const addArtefact = (teamId, injectId, kind, title, body, by) => pushEvent({ type: 'ARTEFACT', teamId, injectId, kind, title, body, by, t: time, hash: 'evt-' + (events.length + 1).toString(16) });
 
-// ──────────────── AAR REPORT ────────────────
-
-function AARReport() {
-  const { scenario, events, derived, realTime } = useStore();
-  const [generated, setGenerated] = rUseState(false);
-  const [narrative, setNarrative] = rUseState('');
-
-  const stats = rUseMemo(() => {
-    const totalSent = events.filter(e => e.type === 'SEND').length;
-    const totalAcks = events.filter(e => e.type === 'ACK').length;
-    const expectedAcks = events.filter(e => e.type === 'SEND').reduce((sum, e) => { const inj = scenario.injects.find(i => i.id === e.injectId); return sum + (inj?.targets.length || 0); }, 0);
-    const ackRate = expectedAcks ? totalAcks / expectedAcks : 0;
-
-    // Ack latency per team
-    const teamStats = scenario.teams.map(team => {
-      const sends = events.filter(e => e.type === 'SEND');
-      const latencies = [];
-      for (const s of sends) {
-        const inj = scenario.injects.find(i => i.id === s.injectId);
-        if (!inj?.targets.includes(team.id)) continue;
-        const ack = events.find(e => e.type === 'ACK' && e.injectId === s.injectId && e.teamId === team.id);
-        if (ack) latencies.push(ack.t - s.t);
-      }
-      const avg = latencies.length ? latencies.reduce((a, b) => a + b, 0) / latencies.length : 0;
-      return { team, avg, count: latencies.length };
+  useEffect(() => {
+    if (state !== 'live') return;
+    scenario.injects.forEach(i => {
+      if (i.type !== 'scheduled') return;
+      if (i.scheduledT > time) return;
+      if (derived.sent.some(s => s.id === i.id)) return;
+      sendInject(i.id);
     });
+  }, [state, time, scenario, derived.sent]);
 
-    // Objectives achievement
-    const objs = scenario.objectives.map(o => {
-      const linked = scenario.injects.filter(i => i.objs.includes(o.id));
-      const ratings = linked.map(i => derived.evals[i.id]).filter(Boolean);
-      const achieved = ratings.filter(r => r === 'Achieved' || r === 'Exceeded').length;
-      return { obj: o, total: linked.length, rated: ratings.length, achieved };
+  useEffect(() => {
+    if (state !== 'live') return;
+    scenario.injects.forEach(i => {
+      if (!i.rule || i.rule.trigger !== 'no_ack') return;
+      if (derived.sent.some(s => s.id === i.id)) return;
+      const source = derived.sent.find(s => s.id === i.rule.onInject);
+      if (!source) return;
+      const thresholdS = (i.rule.thresholdMin || 0) * 60;
+      const acted = derived.actions.some(a => a.injectId === i.rule.onInject && a.teamId === i.rule.byTeam);
+      if (!acted && time >= source.t + thresholdS) sendInject(i.id);
     });
+  }, [state, time, scenario, derived]);
 
-    return { totalSent, totalAcks, expectedAcks, ackRate, teamStats, objs };
-  }, [events, scenario, derived]);
-
-  const generate = async () => {
-    setGenerated(true);
-    setNarrative('Generating narrative…');
-    try {
-      const summary = `Exercise "${scenario.name}" ran for ${fmtT(realTime)}. ${stats.totalSent} of ${scenario.injects.length} injects were fired. Acknowledgement rate ${(stats.ackRate * 100).toFixed(0)}%. ${derived.notes.length} observer notes logged. Recent observer notes: ${derived.notes.slice(-3).map(n => n.text).join(' | ')}`;
-      const text = await window.claude.complete(`You are an exercise evaluator. Write a 3-paragraph After-Action Review narrative in WHO style based on this data: ${summary}. Focus on: what went well, areas for improvement, recommended next steps. Be concrete, concise, and professional.`);
-      setNarrative(text);
-    } catch (err) {
-      setNarrative('Unable to generate AI narrative. You can draft manually below.\n\nKey observations:\n• Acknowledgement rate: ' + (stats.ackRate * 100).toFixed(0) + '%\n• ' + stats.totalSent + ' of ' + scenario.injects.length + ' injects fired\n• ' + derived.notes.length + ' observer notes logged');
-    }
+  const exportEventsJSON = () => JSON.stringify(events, null, 2);
+  const exportMELCSV = () => ['ord,title,phase,scheduledT,type,channel,planRefs', ...scenario.injects.map(i => `${i.ord},"${i.title}",${i.phase},${i.scheduledT},${i.type},${i.channel || ''},"${(i.planRefs||[]).join('; ')}"`)].join('\n');
+  const forkScenario = () => {
+    const stamp = new Date().toISOString().slice(0, 10);
+    const forked = { ...scenario, id: 'fork-' + Date.now(), name: `${scenario.name} (Fork ${stamp})`, provenance: `Forked from ${scenario.name}` };
+    setScenario(forked);
+    setScenarioLibrary(s => [{ id: forked.id, name: forked.name, provenance: forked.provenance, type: forked.type, framework: forked.framework, concept: forked.concept }, ...s]);
   };
 
-  return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: 32 }}>
-      <div style={{ maxWidth: 820, margin: '0 auto' }}>
-        <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: 20, marginBottom: 24 }}>
-          <Mono color="var(--accent)" style={{ letterSpacing: '0.12em' }}>AFTER-ACTION REVIEW</Mono>
-          <h1 style={{ fontSize: 28, fontWeight: 700, margin: '10px 0 4px', letterSpacing: '-0.02em' }}>{scenario.name}</h1>
-          <p style={{ fontSize: 13, color: 'var(--t2)', margin: 0 }}>{scenario.type} Exercise · {scenario.framework}</p>
-        </div>
+  const value = {
+    scenario, setScenario, scenarioLibrary, setScenarioLibrary,
+    state, time, speed, events, scrubT, me,
+    setScrubT, setSpeed, setMe,
+    start, pause, resume, end,
+    sendInject, addNote, chat, setEval, logAction, addArtefact,
+    currentPhase: phaseAt(scenario.phases, time), realTime: time,
+    derived, derive: deriveFrom,
+    exportEventsJSON, exportMELCSV, forkScenario,
+    clearSession: () => { lsRemove(LS.events); lsRemove(LS.me); setEvents([]); },
+    accessTokenPayload: tokenPayload,
+  };
 
-        {/* Headline stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 28 }}>
-          {[
-            { n: fmtT(realTime), l: 'Duration' },
-            { n: `${stats.totalSent}/${scenario.injects.length}`, l: 'Injects fired' },
-            { n: `${(stats.ackRate * 100).toFixed(0)}%`, l: 'Ack rate' },
-            { n: derived.notes.length, l: 'Observations' },
-          ].map(x => <Card key={x.l} style={{ textAlign: 'center', padding: 14 }}>
-            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: 'var(--accent)' }}>{x.n}</div>
-            <Mono>{x.l}</Mono>
-          </Card>)}
-        </div>
-
-        <Section label="Narrative summary" right={<Btn size="sm" variant="quiet" onClick={generate}>✦ Generate with AI</Btn>}>
-          {!generated ? <Empty>Click generate to produce an AI-drafted AAR narrative from your event log + observer notes.</Empty> :
-            <Card><div style={{ fontSize: 13, color: 'var(--t1)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{narrative}</div></Card>}
-        </Section>
-
-        <div style={{ height: 24 }} />
-
-        <Section label="Objective achievement">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {stats.objs.map(({ obj, total, rated, achieved }) => (
-              <div key={obj.id} style={{ padding: 12, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 14 }}>
-                <Mono color="var(--accent)" style={{ fontSize: 11, fontWeight: 700, minWidth: 50 }}>{obj.code}</Mono>
-                <div style={{ flex: 1, fontSize: 13 }}>{obj.text}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Mono>{achieved}/{total} achieved</Mono>
-                  <div style={{ width: 60, height: 4, background: 'var(--elev)', borderRadius: 2, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${total ? (achieved / total) * 100 : 0}%`, background: achieved === total ? 'var(--green)' : 'var(--amber)' }} />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Section>
-
-        <div style={{ height: 24 }} />
-
-        <Section label="Team performance">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
-            {stats.teamStats.map(({ team, avg, count }) => (
-              <Card key={team.id} style={{ borderLeft: `3px solid ${hueColor(team.hue)}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
-                  <Dot color={hueColor(team.hue)} size={7} />
-                  <span style={{ fontSize: 13, fontWeight: 700 }}>{team.name}</span>
-                </div>
-                <div style={{ display: 'flex', gap: 20 }}>
-                  <div>
-                    <Mono>Avg ack latency</Mono>
-                    <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>{avg ? fmtMMSS(avg) : '—'}</div>
-                  </div>
-                  <div>
-                    <Mono>Total ack'd</Mono>
-                    <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>{count}</div>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </Section>
-
-        <div style={{ height: 24 }} />
-
-        <Section label="Observer log" right={<Mono>{derived.notes.length} entries</Mono>}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {derived.notes.length === 0 && <Empty>No observer notes recorded</Empty>}
-            {derived.notes.map((n, i) => <div key={i} style={{ padding: 12, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 7 }}>
-              <div style={{ display: 'flex', gap: 10, marginBottom: 4 }}>
-                <Mono color="var(--accent)">T+{fmtMMSS(n.t)}</Mono>
-                <Mono>{n.by}</Mono>
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--t1)', lineHeight: 1.55 }}>{n.text}</div>
-            </div>)}
-          </div>
-        </Section>
-
-        <div style={{ height: 24 }} />
-
-        <div style={{ display: 'flex', gap: 8, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
-          <Btn variant="primary">Export AAR as PDF</Btn>
-          <Btn variant="quiet">Export MELT log as CSV</Btn>
-          <Btn variant="ghost">Share with stakeholders</Btn>
-        </div>
-      </div>
-    </div>
-  );
+  return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
 }
 
-Object.assign(window, { Review });
+function useStore() { const ctx = useContext(StoreCtx); if (!ctx) throw new Error('useStore must be used within StoreProvider'); return ctx; }
+
+function hueColor(hue, l = 68, c = 0.16) { return `oklch(${l}% ${c} ${hue})`; }
+function fmtMMSS(total) { const s = Math.max(0, Math.floor(total)); const m = Math.floor(s / 60); return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; }
+const fmtT = fmtMMSS;
+
+function Btn({ children, variant = 'primary', size = 'md', style = {}, ...props }) {
+  const sizes = { sm: { padding: '6px 10px', fontSize: 11 }, md: { padding: '8px 12px', fontSize: 12 }, lg: { padding: '10px 16px', fontSize: 13 } };
+  const variants = { primary: { background: 'var(--accent)', color: '#fff', border: '1px solid transparent' }, quiet: { background: 'var(--elev)', color: 'var(--t1)', border: '1px solid var(--border)' }, ghost: { background: 'transparent', color: 'var(--t2)', border: '1px solid var(--border)' }, danger: { background: 'var(--red)', color: '#fff', border: '1px solid transparent' } };
+  return <button {...props} style={{ borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6, ...sizes[size], ...variants[variant], ...style }}>{children}</button>;
+}
+function Card({ children, active, style = {}, ...props }) { return <div {...props} style={{ background: active ? 'color-mix(in oklch, var(--accent) 7%, var(--surface))' : 'var(--surface)', border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 10, padding: 12, ...style }}>{children}</div>; }
+function Chip({ children, hue = 195, small = false }) { return <span style={{ display: 'inline-block', fontSize: small ? 10 : 11, padding: small ? '2px 7px' : '3px 9px', borderRadius: 999, color: hueColor(hue), background: `color-mix(in oklch, ${hueColor(hue)} 16%, transparent)`, border: `1px solid color-mix(in oklch, ${hueColor(hue)} 40%, transparent)`, fontWeight: 700 }}>{children}</span>; }
+function Mono({ children, color = 'var(--t3)', style = {} }) { return <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color, ...style }}>{children}</span>; }
+function Dot({ color = 'var(--t3)', size = 8, pulse = false }) { return <span style={{ width: size, height: size, borderRadius: '50%', display: 'inline-block', background: color, animation: pulse ? 'pulse 1.25s infinite' : 'none' }} />; }
+function TeamChip({ team, small = false }) { if (!team) return null; return <Chip hue={team.hue} small={small}>{team.name}</Chip>; }
+function Section({ label, right, children }) { return <section><div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}><div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t3)' }}>{label}</div><div style={{ marginLeft: 'auto' }}>{right}</div></div>{children}</section>; }
+function Empty({ children }) { return <div style={{ padding: 16, border: '1px dashed var(--border)', borderRadius: 8, color: 'var(--t3)', fontSize: 12 }}>{children}</div>; }
+
+if (!window.claude || typeof window.claude.complete !== 'function') {
+  window.claude = { ...(window.claude || {}), complete: async () => 'AI summary unavailable in this browser runtime. Use your exercise observations and quantitative stats to complete this section.' };
+}
+
+Object.assign(window, { StoreProvider, useStore, hueColor, fmtMMSS, fmtT, Btn, Card, Chip, Mono, Dot, TeamChip, Section, Empty });

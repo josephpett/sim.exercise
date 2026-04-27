@@ -38,27 +38,53 @@
 </head>
 <body>
 <div id="app"></div>
+<script>
+  (function () {
+    const showBootError = (title, detail) => {
+      const el = document.getElementById('app');
+      if (!el) return;
+      el.innerHTML = `<div style="padding:24px;font-family:Inter,system-ui,sans-serif;color:#fff;background:#1a1111;border:1px solid #6b1d1d;border-radius:10px;margin:24px;">
+        <div style="font-weight:700;margin-bottom:8px;">${title}</div>
+        <pre style="white-space:pre-wrap;margin:0;color:#f0c9c9;">${detail || 'Unknown startup error'}</pre>
+      </div>`;
+    };
+    window.addEventListener('error', (e) => showBootError('SimExerciser failed to load', e.message || String(e.error || '')));
+    window.addEventListener('unhandledrejection', (e) => showBootError('SimExerciser startup rejection', String(e.reason || '')));
+    setTimeout(() => {
+      const el = document.getElementById('app');
+      if (el && el.children.length === 0) {
+        showBootError(
+          'SimExerciser did not mount',
+          'If you opened a GitHub file preview page, scripts are blocked there. Use GitHub Pages or a local server URL for full app execution.'
+        );
+      }
+    }, 3000);
+  })();
+</script>
 
-<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
 
-<script type="text/babel" src="c/kit.jsx"></script>
-<script type="text/babel" src="c/Design.jsx"></script>
-<script type="text/babel" src="c/Live.jsx"></script>
-<script type="text/babel" src="c/Review.jsx"></script>
+<script type="text/babel" src="kit.jsx"></script>
+<script type="text/babel" src="Design.jsx"></script>
+<script type="text/babel" src="Live.jsx"></script>
+<script type="text/babel" src="Review.jsx"></script>
 
 <script type="text/babel">
 const { useState, useEffect } = React;
 
+const safeLSGet = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
+const safeLSSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+
 // Persist mode + role
-const savedMode = localStorage.getItem('sx.mode') || 'design';
-const savedRole = localStorage.getItem('sx.role') || 'facilitator';
-const savedTeam = localStorage.getItem('sx.team') || 't1';
+const savedMode = safeLSGet('sx.mode', 'design');
+const savedRole = safeLSGet('sx.role', 'facilitator');
+const savedTeam = safeLSGet('sx.team', 't1');
 
 function Shell() {
   const [mode, setMode] = useState(savedMode);
-  useEffect(() => localStorage.setItem('sx.mode', mode), [mode]);
+  useEffect(() => safeLSSet('sx.mode', mode), [mode]);
 
   return (
     <StoreProvider>
@@ -72,14 +98,14 @@ function ShellInner({ mode, setMode }) {
 
   // Hydrate persisted role
   useEffect(() => {
-    setMe({ role: savedRole, name: savedRole === 'facilitator' ? 'Exercise Director' : savedRole === 'observer' ? 'Dr. Mensah (Eval)' : scenario.teams.find(t => t.id === savedTeam)?.lead, teamId: savedTeam });
+    setMe(prev => ({ ...prev, role: savedRole, name: savedRole === 'facilitator' ? 'Exercise Director' : savedRole === 'observer' ? 'Dr. Mensah (Eval)' : scenario.teams.find(t => t.id === savedTeam)?.lead, teamId: savedTeam }));
   }, []);
 
   const setRole = (role, teamId) => {
-    const newMe = { role, name: role === 'facilitator' ? 'Exercise Director' : role === 'observer' ? 'Dr. Mensah (Eval)' : scenario.teams.find(t => t.id === (teamId || me.teamId))?.lead, teamId: teamId || me.teamId };
+    const newMe = { ...me, role, name: role === 'facilitator' ? 'Exercise Director' : role === 'observer' ? 'Dr. Mensah (Eval)' : scenario.teams.find(t => t.id === (teamId || me.teamId))?.lead, teamId: teamId || me.teamId };
     setMe(newMe);
-    localStorage.setItem('sx.role', role);
-    if (teamId) localStorage.setItem('sx.team', teamId);
+    safeLSSet('sx.role', role);
+    if (teamId) safeLSSet('sx.team', teamId);
   };
 
   return (
@@ -136,10 +162,13 @@ function TopBar({ mode, setMode, role, setRole, teamId }) {
 
       <div style={{ flex: 1 }} />
 
-      {/* Role switcher (only relevant in Live) */}
+      {/* Access model note + facilitator-only preview tool */}
       {mode === 'live' && (
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <span style={{ fontSize:10, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:'var(--t3)' }}>View as</span>
+          <span style={{ fontSize:10, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:'var(--t3)' }}>Access</span>
+          <span style={{ fontSize:11, color:'var(--t2)' }}>Magic-link/QR role entry (phase-1 scaffold)</span>
+          <span style={{ width:1, height:16, background:'var(--border)' }} />
+          <span style={{ fontSize:10, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:'var(--t3)' }}>Preview as (dev only)</span>
           <div style={{ display:'flex', gap:2, background:'var(--bg)', padding:3, borderRadius:7, border:'1px solid var(--border)' }}>
             {[['facilitator','Facilitator'],['participant','Participant'],['observer','Observer']].map(([id,label]) => <button key={id} onClick={() => setRole(id, teamId)} style={{ padding:'5px 10px', fontSize:11, fontWeight:600, background: role === id ? 'var(--elev)' : 'transparent', color: role === id ? 'var(--t1)' : 'var(--t3)', border:'none', borderRadius:5, cursor:'pointer', fontFamily:'inherit' }}>{label}</button>)}
           </div>

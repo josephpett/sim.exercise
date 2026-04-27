@@ -1,288 +1,218 @@
+// LIVE MODE — calm facilitator ops + keyboard-first + participant capture workflow
 
-// DESIGN MODE — MELT-first editing + rule builder + inject library view
+const { useState: lUseState, useEffect: lUseEffect } = React;
 
-const { useState: dUseState } = React;
+function Live() {
+  const s = useStore();
+  if (s.state === 'idle') return <PreflightView />;
 
-function Design() {
-  const { scenario, setScenario } = useStore();
-  const [selId, setSelId] = dUseState(null);
-  const [tab, setTab] = dUseState('melt'); // melt | rules | objectives
-
-  const sel = scenario.injects.find(i => i.id === selId);
-  const update = (id, patch) => setScenario(s => ({ ...s, injects: s.injects.map(i => i.id === id ? { ...i, ...patch } : i) }));
-  const addInject = () => {
-    const id = 'i' + Date.now().toString(36).slice(-3);
-    const next = { id, ord: scenario.injects.length + 1, phase: 'p1', scheduledT: 0, type: 'scheduled', title: 'New inject', content: '', targets: [], caps: [], objs: [] };
-    setScenario(s => ({ ...s, injects: [...s.injects, next] }));
-    setSelId(id);
-  };
-  const del = (id) => {
-    setScenario(s => ({ ...s, injects: s.injects.filter(i => i.id !== id) }));
-    if (selId === id) setSelId(null);
-  };
-
-  const aiDraft = () => {
-    if (!sel) return;
-    update(sel.id, { content: sel.content + (sel.content ? '\n\n' : '') + '[AI-drafted continuation based on scenario context — edit freely.]' });
-  };
-
-  return (
-    <div style={{ display: 'flex', height: '100%' }}>
-      {/* left tabs */}
-      <aside style={{ width: 68, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '14px 0', gap: 4, flexShrink: 0 }}>
-        {[
-          { id: 'melt', label: 'MEL', icon: '▦' },
-          { id: 'rules', label: 'Logic', icon: '⇅' },
-          { id: 'objectives', label: 'Goals', icon: '◎' },
-        ].map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            width: 52, padding: '8px 0', border: 'none', background: tab === t.id ? 'var(--elev)' : 'transparent',
-            color: tab === t.id ? 'var(--accent)' : 'var(--t3)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3
-          }}>
-            <span style={{ fontSize: 18 }}>{t.icon}</span>
-            <span style={{ fontSize: 9, letterSpacing: '0.04em', textTransform: 'uppercase', fontWeight: 700 }}>{t.label}</span>
-          </button>
-        ))}
-      </aside>
-
-      {tab === 'melt' && <MELDesign scenario={scenario} selId={selId} setSelId={setSelId} addInject={addInject} del={del} update={update} sel={sel} aiDraft={aiDraft} />}
-      {tab === 'rules' && <RulesView scenario={scenario} />}
-      {tab === 'objectives' && <ObjectivesView scenario={scenario} />}
+  return <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <LiveHeader />
+    <div style={{ flex: 1, overflow: 'hidden' }}>
+      {s.me.role === 'facilitator' && <FacilitatorOps />}
+      {s.me.role === 'participant' && <ParticipantOps />}
+      {s.me.role === 'observer' && <ObserverOps />}
     </div>
-  );
+  </div>;
 }
 
-function MELDesign({ scenario, selId, setSelId, addInject, del, update, sel, aiDraft }) {
-  return (
-    <>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: sel ? '1px solid var(--border)' : 'none' }}>
-        <header style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'baseline', gap: 12 }}>
-          <div>
-            <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Master Events List</h1>
-            <p style={{ fontSize: 12, color: 'var(--t3)', margin: '3px 0 0' }}>{scenario.injects.length} injects · {scenario.phases.length} phases · Single source of truth</p>
-          </div>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-            <Btn variant="quiet" size="sm">Import CSV</Btn>
-            <Btn variant="quiet" size="sm">Export</Btn>
-            <Btn variant="primary" size="sm" onClick={addInject}>+ New inject</Btn>
-          </div>
-        </header>
-
-        <div style={{ flex: 1, overflowY: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead>
-              <tr>
-                {['#', 'Scheduled', 'Title', 'Phase', 'Type', 'Targets', 'Capabilities', 'Objectives', ''].map(h => (
-                  <th key={h} style={{ position: 'sticky', top: 0, background: 'var(--bg)', padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--t3)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {scenario.injects.map(inj => {
-                const ph = scenario.phases.find(p => p.id === inj.phase);
-                const active = selId === inj.id;
-                return (
-                  <tr key={inj.id} onClick={() => setSelId(inj.id)} style={{ cursor: 'pointer', background: active ? 'color-mix(in oklch, var(--accent) 8%, transparent)' : 'transparent', borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '10px 14px' }}><Mono>{String(inj.ord).padStart(2, '0')}</Mono></td>
-                    <td style={{ padding: '10px 14px' }}><Mono color="var(--t2)">T+{fmtMMSS(inj.scheduledT)}</Mono></td>
-                    <td style={{ padding: '10px 14px', maxWidth: 280 }}>
-                      <div style={{ fontWeight: 600, color: 'var(--t1)' }}>{inj.title}</div>
-                      {inj.rule && <div style={{ fontSize: 10, color: 'var(--t3)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}>⇅ {inj.rule.trigger === 'ack' ? `Fires 5m after ${inj.rule.onInject} ack'd by ${inj.rule.byTeam}` : `Fires if ${inj.rule.onInject} not ack'd by ${inj.rule.byTeam} within ${inj.rule.thresholdMin}m`}</div>}
-                    </td>
-                    <td style={{ padding: '10px 14px' }}>{ph && <Chip hue={ph.hue} small>{ph.name}</Chip>}</td>
-                    <td style={{ padding: '10px 14px' }}>
-                      <Chip small hue={inj.type === 'immediate' ? 25 : inj.type === 'conditional' ? 65 : 195}>{inj.type}</Chip>
-                    </td>
-                    <td style={{ padding: '10px 14px' }}>
-                      <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                        {inj.targets.map(tid => { const t = scenario.teams.find(t => t.id === tid); return t ? <TeamChip key={tid} team={t} small /> : null; })}
-                      </div>
-                    </td>
-                    <td style={{ padding: '10px 14px' }}>
-                      <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                        {inj.caps.map(c => <span key={c} style={{ fontSize: 10, color: 'var(--t3)', background: 'var(--elev)', padding: '1px 6px', borderRadius: 3, border: '1px solid var(--border)' }}>{c}</span>)}
-                      </div>
-                    </td>
-                    <td style={{ padding: '10px 14px' }}>
-                      <div style={{ display: 'flex', gap: 3 }}>
-                        {inj.objs.map(oid => { const o = scenario.objectives.find(o => o.id === oid); return o ? <Mono key={oid} color="var(--accent)">{o.code}</Mono> : null; })}
-                      </div>
-                    </td>
-                    <td style={{ padding: '10px 14px' }}>
-                      <button onClick={e => { e.stopPropagation(); del(inj.id); }} style={{ background: 'none', border: 'none', color: 'var(--t3)', cursor: 'pointer', fontSize: 14 }}>×</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-
-          {/* Phase separators visualisation */}
-          <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t3)', marginBottom: 10 }}>Timeline</div>
-            <TimelineRuler scenario={scenario} />
-          </div>
-        </div>
+function PreflightView() {
+  const { scenario, start, me, accessTokenPayload, clearSession } = useStore();
+  return <div style={{ height: '100%', display: 'grid', placeItems: 'center', padding: 32 }}>
+    <div style={{ maxWidth: 720, textAlign: 'center' }}>
+      <Mono color='var(--accent)'>PHASE 1 ACCESS SCAFFOLD</Mono>
+      <h1 style={{ fontSize: 32, margin: '10px 0 8px' }}>{scenario.name}</h1>
+      <p style={{ color: 'var(--t2)', marginBottom: 20 }}>{scenario.type} · {scenario.framework}</p>
+      <Card style={{ textAlign: 'left' }}>
+        <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 8 }}>Access status: <strong>{me.access}</strong>{accessTokenPayload ? ` · ${accessTokenPayload.role}/${accessTokenPayload.teamId}/${accessTokenPayload.seat || 'eoc_lead'}` : ''}</div>
+        <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 8 }}>Use link params to preview role-specific access (prototype scaffold):</div>
+        <Mono>...?role=facilitator</Mono><br />
+        <Mono>...?role=participant&team=t2&seat=eoc_lead</Mono><br />
+        <Mono>...?role=participant&team=t2&seat=deputy</Mono><br />
+        <Mono>...?role=participant&team=t2&seat=liaison</Mono><br />
+        <Mono>...?access=&lt;signed-token&gt;</Mono><br />
+        <Mono>...?role=observer</Mono>
+      </Card>
+      <div style={{ height: 16, display: 'flex', justifyContent: 'center', gap: 8 }}>
+        <Btn variant='primary' size='lg' onClick={start}>▶ Start exercise</Btn>
+        <Btn variant='quiet' size='sm' onClick={clearSession}>Reset local session</Btn>
       </div>
-
-      {sel && <InjectEditor inj={sel} scenario={scenario} onUpdate={patch => update(sel.id, patch)} onClose={() => setSelId(null)} aiDraft={aiDraft} />}
-    </>
-  );
-}
-
-function TimelineRuler({ scenario }) {
-  const maxT = 4000;
-  return (
-    <div style={{ position: 'relative', height: 60, background: 'var(--elev)', border: '1px solid var(--border)', borderRadius: 6 }}>
-      {/* phase bands */}
-      {scenario.phases.map((p, i) => {
-        const end = scenario.phases[i + 1]?.start ?? maxT;
-        return <div key={p.id} style={{ position: 'absolute', top: 0, bottom: 0, left: `${(p.start / maxT) * 100}%`, width: `${((end - p.start) / maxT) * 100}%`, background: `color-mix(in oklch, ${hueColor(p.hue)} 10%, transparent)`, borderRight: '1px dashed var(--border)' }}>
-          <div style={{ position: 'absolute', top: 4, left: 6, fontSize: 10, fontWeight: 700, color: hueColor(p.hue), letterSpacing: '0.04em', textTransform: 'uppercase' }}>{p.name}</div>
-        </div>;
-      })}
-      {/* inject marks */}
-      {scenario.injects.map(inj => {
-        const ph = scenario.phases.find(p => p.id === inj.phase);
-        return <div key={inj.id} title={inj.title} style={{ position: 'absolute', top: '50%', left: `${(inj.scheduledT / maxT) * 100}%`, width: 8, height: 8, borderRadius: '50%', background: hueColor(ph.hue), transform: 'translate(-50%, 0)', cursor: 'pointer', boxShadow: '0 0 0 2px var(--surface)' }} />;
-      })}
     </div>
-  );
+  </div>;
 }
 
-function InjectEditor({ inj, scenario, onUpdate, onClose, aiDraft }) {
-  return (
-    <aside style={{ width: 420, background: 'var(--surface)', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
-      <header style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <Mono color="var(--accent)">{String(inj.ord).padStart(2, '0')}</Mono>
-        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t3)' }}>Inject editor</span>
-        <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--t3)', cursor: 'pointer', fontSize: 20 }}>×</button>
-      </header>
-      <div style={{ flex: 1, overflowY: 'auto', padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <Field label="Title">
-          <input value={inj.title} onChange={e => onUpdate({ title: e.target.value })} style={inputStyle} />
-        </Field>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <Field label="Phase"><select value={inj.phase} onChange={e => onUpdate({ phase: e.target.value })} style={inputStyle}>{scenario.phases.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>
-          <Field label="Type"><select value={inj.type} onChange={e => onUpdate({ type: e.target.value })} style={inputStyle}>{['scheduled', 'immediate', 'conditional'].map(t => <option key={t}>{t}</option>)}</select></Field>
-        </div>
-        <Field label="Scheduled T+ (seconds)"><input type="number" value={inj.scheduledT} onChange={e => onUpdate({ scheduledT: +e.target.value })} style={inputStyle} /></Field>
-        <Field label="Target teams">
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {scenario.teams.map(t => {
-              const on = inj.targets.includes(t.id);
-              return <button key={t.id} onClick={() => onUpdate({ targets: on ? inj.targets.filter(x => x !== t.id) : [...inj.targets, t.id] })} style={{ border: `1px solid ${on ? hueColor(t.hue) : 'var(--border)'}`, background: on ? `color-mix(in oklch, ${hueColor(t.hue)} 18%, transparent)` : 'var(--elev)', color: on ? hueColor(t.hue) : 'var(--t2)', borderRadius: 5, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{t.name}</button>;
-            })}
-          </div>
-        </Field>
-        <Field label="Content"><textarea rows={10} value={inj.content} onChange={e => onUpdate({ content: e.target.value })} style={{ ...inputStyle, fontFamily: "'JetBrains Mono', monospace", fontSize: 12, lineHeight: 1.6, resize: 'vertical' }} /></Field>
-        <Btn size="sm" variant="quiet" onClick={aiDraft}>✦ Draft continuation with AI</Btn>
-        <Field label="Capabilities">
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-            {scenario.capabilities.map(c => { const on = inj.caps.includes(c); return <button key={c} onClick={() => onUpdate({ caps: on ? inj.caps.filter(x => x !== c) : [...inj.caps, c] })} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 3, border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, background: on ? 'color-mix(in oklch, var(--accent) 15%, transparent)' : 'transparent', color: on ? 'var(--accent)' : 'var(--t3)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: on ? 600 : 400 }}>{c}</button>; })}
-          </div>
-        </Field>
-        <Field label="Objectives">
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-            {scenario.objectives.map(o => { const on = inj.objs.includes(o.id); return <button key={o.id} onClick={() => onUpdate({ objs: on ? inj.objs.filter(x => x !== o.id) : [...inj.objs, o.id] })} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 3, border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, background: on ? 'color-mix(in oklch, var(--accent) 15%, transparent)' : 'transparent', color: on ? 'var(--accent)' : 'var(--t3)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: on ? 700 : 500 }}>{o.code}</button>; })}
-          </div>
-        </Field>
+function LiveHeader() {
+  const { scenario, state, time, speed, setSpeed, pause, resume, end, currentPhase, me } = useStore();
+  return <header style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 14, background: 'var(--surface)' }}>
+    <div><div style={{ fontWeight: 700 }}>{scenario.name}</div><div style={{ fontSize: 11, color: 'var(--t3)' }}>Role: {me.role} · Access: {me.access} · Phase: {currentPhase.name}</div></div>
+    <div style={{ marginLeft: 'auto', fontFamily: "'JetBrains Mono', monospace", fontSize: 26, fontWeight: 700 }}>{fmtT(time)}</div>
+    <div style={{ display: 'flex', gap: 3 }}>{[1, 2, 5, 10].map(x => <button key={x} onClick={() => setSpeed(x)} style={{ padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', background: speed === x ? 'var(--accent)' : 'var(--elev)', color: speed === x ? '#fff' : 'var(--t3)' }}>{x}×</button>)}</div>
+    {state === 'live' ? <Btn size='sm' variant='quiet' onClick={pause}>Pause</Btn> : <Btn size='sm' variant='primary' onClick={resume}>Resume</Btn>}
+    <Btn size='sm' variant='danger' onClick={end}>End</Btn>
+  </header>;
+}
 
-        {inj.rule && (
-          <div style={{ background: 'var(--elev)', border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--accent)', marginBottom: 6 }}>⇅ Conditional rule</div>
-            <div style={{ fontSize: 12, color: 'var(--t1)', lineHeight: 1.6 }}>
-              {inj.rule.trigger === 'ack'
-                ? <>Fires <strong>{inj.rule.delayS}s</strong> after inject <Mono>{inj.rule.onInject}</Mono> is acknowledged by team <Mono>{inj.rule.byTeam}</Mono>.</>
-                : <>Fires if inject <Mono>{inj.rule.onInject}</Mono> is not acknowledged by team <Mono>{inj.rule.byTeam}</Mono> within <strong>{inj.rule.thresholdMin} min</strong>.</>}
-            </div>
-          </div>
-        )}
-      </div>
+function FacilitatorOps() {
+  const { scenario, time, state, derived, sendInject, pause, resume, addNote } = useStore();
+  const [noteText, setNoteText] = lUseState('');
+  const [trayOpen, setTrayOpen] = lUseState(false);
+  const [focusTeam, setFocusTeam] = lUseState(null);
+  const [paletteOpen, setPaletteOpen] = lUseState(false);
+  const [paletteCmd, setPaletteCmd] = lUseState('');
+
+  const pending = scenario.injects.filter(i => !derived.sent.some(s => s.id === i.id));
+  const nextUp = pending.sort((a, b) => a.scheduledT - b.scheduledT)[0];
+
+  lUseEffect(() => {
+    const onKey = (e) => {
+      if (e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+      if (e.key === ' ') { e.preventDefault(); if (nextUp) sendInject(nextUp.id); }
+      if (e.key.toLowerCase() === 'n') { e.preventDefault(); document.getElementById('fac-note-input')?.focus(); }
+      if (e.key.toLowerCase() === 'p') { e.preventDefault(); state === 'live' ? pause() : resume(); }
+      if (['1', '2', '3', '4'].includes(e.key)) setFocusTeam('t' + e.key);
+      if (e.key === '/') { e.preventDefault(); setPaletteOpen(p => !p); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [nextUp, state, pause, resume]);
+
+  const teamStatus = scenario.teams.map(t => ({
+    team: t,
+    waiting: derived.sent.filter(s => scenario.injects.find(i => i.id === s.id)?.targets.includes(t.id)).length - derived.actions.filter(a => a.teamId === t.id).length,
+  }));
+
+  const runCommand = () => {
+    const cmd = paletteCmd.trim().toLowerCase();
+    if (!cmd) return;
+    if (cmd === 'fire next' && nextUp) sendInject(nextUp.id);
+    else if (cmd === 'pause') pause();
+    else if (cmd === 'resume') resume();
+    else if (cmd.startsWith('focus ')) setFocusTeam(cmd.replace('focus ', 't'));
+    else if (cmd.startsWith('note ')) addNote('Facilitator', cmd.replace('note ', ''));
+    setPaletteCmd('');
+  };
+
+  return <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', height: '100%' }}>
+    <div style={{ padding: 20, overflowY: 'auto' }}>
+      <Card style={{ borderColor: 'var(--accent)', padding: 22 }}>
+        <Mono color='var(--accent)' style={{ fontWeight: 700 }}>NOW CARD</Mono>
+        {nextUp ? <>
+          <h2 style={{ margin: '8px 0 6px', fontSize: 26 }}>{nextUp.title}</h2>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>{nextUp.targets.map(tid => <TeamChip key={tid} team={scenario.teams.find(t => t.id === tid)} />)}</div>
+          <div style={{ fontSize: 12, color: 'var(--t2)', marginBottom: 10 }}>Channel: <strong>{nextUp.channel || 'email'}</strong> · Plan refs: {(nextUp.planRefs || []).join(', ') || '—'}</div>
+          <pre style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: 12, whiteSpace: 'pre-wrap' }}>{nextUp.content}</pre>
+          <div style={{ marginTop: 12, display: 'flex', gap: 8 }}><Btn variant='primary' size='lg' onClick={() => sendInject(nextUp.id)}>Space · Fire next inject</Btn><Btn variant='quiet' onClick={() => setTrayOpen(v => !v)}>{trayOpen ? 'Hide' : 'Show'} recent activity</Btn></div>
+        </> : <Empty>All injects fired.</Empty>}
+      </Card>
+
+      <div style={{ height: 16 }} />
+      <Section label='Team attention (4-dot strip)' right={<Mono>1–4 to focus</Mono>}>
+        <div style={{ display: 'flex', gap: 10 }}>{teamStatus.map((s, idx) => <div key={s.team.id} style={{ padding: '8px 10px', borderRadius: 999, border: `1px solid ${focusTeam === s.team.id ? hueColor(s.team.hue) : 'var(--border)'}`, background: focusTeam === s.team.id ? 'color-mix(in oklch, var(--accent) 8%, transparent)' : 'var(--surface)' }}><Dot color={s.waiting > 0 ? 'var(--amber)' : hueColor(s.team.hue)} /> <Mono>{idx + 1}. {s.team.name} {s.waiting > 0 ? `· ${s.waiting} waiting` : '· up to date'}</Mono></div>)}</div>
+      </Section>
+
+      {trayOpen && <><div style={{ height: 16 }} /><Section label='Recent activity tray' right={<Mono>collapsible</Mono>}><div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{derived.sent.slice(-6).reverse().map(s => <Card key={s.id + s.t} style={{ padding: 8 }}><Mono color='var(--accent)'>T+{fmtMMSS(s.t)}</Mono> {scenario.injects.find(i => i.id === s.id)?.title}</Card>)}</div></Section></>}
+    </div>
+
+    <aside style={{ borderLeft: '1px solid var(--border)', background: 'var(--surface)', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <Section label='Keyboard shortcuts'><Mono>Space fire · N note · P pause · 1–4 focus · / palette</Mono></Section>
+      {paletteOpen && <Card><Mono color='var(--accent)'>Command palette</Mono><div style={{ marginTop: 8, fontSize: 12, color: 'var(--t3)' }}>Try: <Mono>fire next</Mono>, <Mono>pause</Mono>, <Mono>resume</Mono>, <Mono>focus 1</Mono>, <Mono>note ...</Mono></div><div style={{ display: 'flex', gap: 6, marginTop: 8 }}><input value={paletteCmd} onChange={e => setPaletteCmd(e.target.value)} onKeyDown={e => e.key === 'Enter' && runCommand()} placeholder='/' style={{ ...pText, margin: 0 }} /><Btn size='sm' variant='primary' onClick={runCommand}>Run</Btn></div></Card>}
+      <textarea id='fac-note-input' value={noteText} onChange={e => setNoteText(e.target.value)} placeholder='N → capture facilitator note' style={{ width: '100%', minHeight: 90, background: 'var(--elev)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--t1)', padding: 8 }} />
+      <Btn variant='primary' onClick={() => { if (noteText.trim()) { addNote('Facilitator', noteText.trim()); setNoteText(''); } }}>Log note</Btn>
+      <Section label='Immutable log (mock)'><Mono>{derived.sent.length + derived.actions.length + derived.artefacts.length + derived.notes.length} signed events</Mono></Section>
     </aside>
-  );
+  </div>;
 }
 
-const inputStyle = { width: '100%', boxSizing: 'border-box', background: 'var(--elev)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--t1)', fontFamily: 'inherit', fontSize: 13, padding: '7px 10px', outline: 'none' };
+function ParticipantOps() {
+  const { scenario, me, derived, logAction, addArtefact, state } = useStore();
+  const teamId = me.teamId || 't1';
+  const [selectedId, setSelectedId] = lUseState(null);
+  const [actionText, setActionText] = lUseState('');
+  const [consulted, setConsulted] = lUseState('');
+  const [artifactType, setArtifactType] = lUseState('SITREP');
+  const [artifactBody, setArtifactBody] = lUseState('');
 
-function Field({ label, children }) {
-  return <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-    <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--t3)' }}>{label}</span>
-    {children}
-  </label>;
+  const feed = derived.sent.filter(s => scenario.injects.find(i => i.id === s.id)?.targets.includes(teamId));
+  const selected = scenario.injects.find(i => i.id === (selectedId || feed[feed.length - 1]?.id));
+  const teamActions = derived.actions.filter(a => a.teamId === teamId).slice().reverse();
+  const teamArtefacts = derived.artefacts.filter(a => a.teamId === teamId).slice().reverse();
+  const seat = me.seat || 'eoc_lead';
+
+  const renderStimulus = (inj) => {
+    if (!inj) return <Empty>Waiting for first inject.</Empty>;
+    const body = <div style={{ fontSize: 13, lineHeight: 1.65 }}>{inj.content}</div>;
+    if (inj.channel === 'news') return <Card style={{ borderLeft: '4px solid var(--amber)' }}><Mono>NEWS TICKER</Mono>{body}</Card>;
+    if (inj.channel === 'dm') return <Card style={{ borderLeft: '4px solid var(--accent)' }}><Mono>DIRECT MESSAGE</Mono>{body}</Card>;
+    if (inj.channel === 'phone') return <Card style={{ borderLeft: '4px solid var(--green)' }}><Mono>PHONE TRANSCRIPT</Mono>{body}</Card>;
+    if (inj.channel === 'alert') return <Card style={{ borderLeft: '4px solid var(--red)' }}><Mono>ALERT</Mono>{body}</Card>;
+    return <Card><Mono>EMAIL</Mono>{body}</Card>;
+  };
+
+  if (state === 'ended') {
+    return <div style={{ padding: 24, overflowY: 'auto' }}>
+      <h2 style={{ marginTop: 0 }}>Personal debrief</h2>
+      <p style={{ color: 'var(--t2)' }}>Your own decisions and outputs for self-reflection.</p>
+      <Section label='Your action log'>{teamActions.length === 0 ? <Empty>No actions logged.</Empty> : teamActions.map((a, i) => <Card key={i} style={{ marginBottom: 8 }}><Mono color='var(--accent)'>T+{fmtMMSS(a.t)}</Mono><div style={{ marginTop: 4 }}>{a.text}</div>{a.consulted && <Mono>Consulted: {a.consulted}</Mono>}</Card>)}</Section>
+      <div style={{ height: 12 }} />
+      <Section label='Your artefacts'>{teamArtefacts.length === 0 ? <Empty>No artefacts created.</Empty> : teamArtefacts.map((a, i) => <Card key={i} style={{ marginBottom: 8 }}><Mono>{a.kind}</Mono><div style={{ marginTop: 4, whiteSpace: 'pre-wrap' }}>{a.body}</div></Card>)}</Section>
+    </div>;
+  }
+
+  return <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr 320px', height: '100%' }}>
+    <aside style={{ borderRight: '1px solid var(--border)', overflowY: 'auto' }}>
+      <div style={{ padding: 12, borderBottom: '1px solid var(--border)' }}><Mono color='var(--accent)'>Stimulus inbox</Mono></div>
+      {feed.slice().reverse().map(s => {
+        const inj = scenario.injects.find(i => i.id === s.id);
+        return <div key={s.id + s.t} onClick={() => setSelectedId(s.id)} style={{ padding: 10, borderBottom: '1px solid var(--border)', cursor: 'pointer', background: selected?.id === s.id ? 'color-mix(in oklch, var(--accent) 7%, transparent)' : 'transparent' }}><div style={{ fontWeight: 600 }}>{inj.title}</div><Mono>{inj.channel || 'email'} · T+{fmtMMSS(s.t)}</Mono></div>;
+      })}
+    </aside>
+
+    <main style={{ padding: 20, overflowY: 'auto' }}>
+      <RolePanel seat={seat} selected={selected} teamActions={teamActions} teamArtefacts={teamArtefacts} />
+      <div style={{ height: 12 }} />
+      {renderStimulus(selected)}
+      <div style={{ height: 14 }} />
+      <Section label='Log what you did (no scoring)'><textarea value={actionText} onChange={e => setActionText(e.target.value)} placeholder='What did your team decide/do?' style={pInput} /><input value={consulted} onChange={e => setConsulted(e.target.value)} placeholder='Optional: who was consulted?' style={pText} /><Btn variant='primary' onClick={() => { if (actionText.trim() && selected) { logAction(teamId, selected.id, me.name || 'Participant', actionText.trim(), consulted.trim()); setActionText(''); setConsulted(''); } }}>Save action log</Btn></Section>
+      <div style={{ height: 14 }} />
+      <Section label='Artefact templates'><div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>{['SITREP', 'Press line', 'Resource request', 'IHR notification'].map(t => <button key={t} onClick={() => setArtifactType(t)} style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: artifactType === t ? 'var(--accent)' : 'var(--elev)', color: artifactType === t ? '#fff' : 'var(--t2)' }}>{t}</button>)}</div><textarea value={artifactBody} onChange={e => setArtifactBody(e.target.value)} placeholder={`Draft ${artifactType}...`} style={pInput} /><Btn variant='quiet' onClick={() => { if (artifactBody.trim() && selected) { addArtefact(teamId, selected.id, artifactType, `${artifactType} @ T+`, artifactBody.trim(), me.name || 'Participant'); setArtifactBody(''); } }}>Save artefact</Btn></Section>
+    </main>
+
+    <aside style={{ borderLeft: '1px solid var(--border)', padding: 12, overflowY: 'auto', background: 'var(--surface)' }}>
+      <Section label='Shared team log (common operating picture)'><div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{teamActions.length === 0 && <Empty>No actions yet</Empty>}{teamActions.map((a, i) => <Card key={i}><Mono color='var(--accent)'>T+{fmtMMSS(a.t)}</Mono><div style={{ marginTop: 4, fontSize: 12 }}>{a.text}</div>{a.consulted && <Mono>Consulted: {a.consulted}</Mono>}</Card>)}</div></Section>
+      <div style={{ height: 12 }} />
+      <Section label='Team artefacts'>{teamArtefacts.length === 0 && <Empty>No artefacts yet</Empty>}{teamArtefacts.map((a, i) => <Card key={i} style={{ marginBottom: 6 }}><Mono>{a.kind}</Mono><div style={{ fontSize: 12, marginTop: 4, whiteSpace: 'pre-wrap' }}>{a.body}</div></Card>)}</Section>
+    </aside>
+  </div>;
 }
 
-function RulesView({ scenario }) {
-  const withRules = scenario.injects.filter(i => i.rule);
-  return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: 32 }}>
-      <div style={{ maxWidth: 900, margin: '0 auto' }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 6px' }}>Scenario logic</h1>
-        <p style={{ fontSize: 13, color: 'var(--t3)', margin: '0 0 28px', maxWidth: 600 }}>Conditional injects that fire based on participant behaviour — the branching engine that makes a scripted scenario respond to real decisions.</p>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {withRules.map(inj => {
-            const source = scenario.injects.find(i => i.id === inj.rule.onInject);
-            const team = scenario.teams.find(t => t.id === inj.rule.byTeam);
-            return (
-              <div key={inj.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 16 }}>
-                <Card>
-                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--t3)', marginBottom: 4 }}>When</div>
-                  <div style={{ fontSize: 13, color: 'var(--t1)', lineHeight: 1.5 }}>
-                    {inj.rule.trigger === 'ack' ? (
-                      <>Inject <Mono color="var(--accent)">{source?.ord.toString().padStart(2, '0')}</Mono> <strong>{source?.title}</strong> is acknowledged by <TeamChip team={team} small />, wait <Mono>{inj.rule.delayS}s</Mono>.</>
-                    ) : (
-                      <>Inject <Mono color="var(--accent)">{source?.ord.toString().padStart(2, '0')}</Mono> <strong>{source?.title}</strong> is <span style={{ color: 'var(--red)', fontWeight: 600 }}>NOT</span> acknowledged by <TeamChip team={team} small /> within <Mono>{inj.rule.thresholdMin}m</Mono>.</>
-                    )}
-                  </div>
-                </Card>
-                <div style={{ fontSize: 18, color: 'var(--accent)' }}>→</div>
-                <Card style={{ borderColor: 'var(--accent)' }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--accent)', marginBottom: 4 }}>Then trigger</div>
-                  <div style={{ fontSize: 13, color: 'var(--t1)', lineHeight: 1.5 }}>
-                    <Mono color="var(--accent)">{inj.ord.toString().padStart(2, '0')}</Mono> <strong>{inj.title}</strong>
-                  </div>
-                </Card>
-              </div>
-            );
-          })}
-          <button style={{ padding: '18px', border: '1px dashed var(--border)', borderRadius: 10, background: 'transparent', color: 'var(--t3)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>+ Add conditional rule</button>
-        </div>
-      </div>
+function ObserverOps() {
+  const { scenario, derived, setEval, addNote } = useStore();
+  const [note, setNote] = lUseState('');
+  return <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', height: '100%' }}>
+    <div style={{ padding: 20, overflowY: 'auto' }}>
+      <Section label='Observer stream'>{derived.sent.slice().reverse().map(s => {
+        const inj = scenario.injects.find(i => i.id === s.id);
+        const actions = derived.actions.filter(a => a.injectId === s.id).length;
+        return <Card key={s.id + s.t} style={{ marginBottom: 8 }}><Mono color='var(--accent)'>T+{fmtMMSS(s.t)}</Mono><div style={{ marginTop: 4, fontWeight: 600 }}>{inj.title}</div><Mono>{actions} team action logs captured</Mono><div style={{ marginTop: 6 }}>{['Not obs.', 'Partial', 'Achieved', 'Exceeded'].map(r => <button key={r} onClick={() => setEval(inj.id, r)} style={{ marginRight: 4, border: '1px solid var(--border)', background: 'var(--elev)', color: 'var(--t2)', borderRadius: 4, padding: '2px 6px' }}>{r}</button>)}</div></Card>;
+      })}</Section>
     </div>
-  );
+    <aside style={{ borderLeft: '1px solid var(--border)', padding: 14, background: 'var(--surface)' }}>
+      <Section label='Observer notes to AAR'><textarea value={note} onChange={e => setNote(e.target.value)} style={pInput} /><Btn variant='primary' onClick={() => { if (note.trim()) { addNote('Observer', note.trim()); setNote(''); } }}>Save note</Btn></Section>
+    </aside>
+  </div>;
 }
 
-function ObjectivesView({ scenario }) {
-  return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: 32 }}>
-      <div style={{ maxWidth: 900, margin: '0 auto' }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 6px' }}>Exercise objectives</h1>
-        <p style={{ fontSize: 13, color: 'var(--t3)', margin: '0 0 28px' }}>{scenario.framework}</p>
+const pInput = { width: '100%', minHeight: 90, background: 'var(--elev)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--t1)', padding: 8, boxSizing: 'border-box' };
+const pText = { width: '100%', background: 'var(--elev)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--t1)', padding: 8, boxSizing: 'border-box', margin: '8px 0' };
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {scenario.objectives.map(o => {
-            const linked = scenario.injects.filter(i => i.objs.includes(o.id));
-            return (
-              <Card key={o.id}>
-                <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-                  <Mono color="var(--accent)" style={{ fontSize: 12, fontWeight: 700 }}>{o.code}</Mono>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>{o.text}</div>
-                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                      {linked.map(inj => <span key={inj.id} style={{ fontSize: 10, background: 'var(--elev)', border: '1px solid var(--border)', padding: '2px 7px', borderRadius: 3, color: 'var(--t2)' }}>#{String(inj.ord).padStart(2, '0')} {inj.title}</span>)}
-                    </div>
-                  </div>
-                  <Mono>{linked.length} injects</Mono>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
+function RolePanel({ seat, selected, teamActions, teamArtefacts }) {
+  if (seat === 'deputy') {
+    return <Card><Mono color='var(--accent)'>Deputy view</Mono><div style={{ marginTop: 6, fontSize: 13 }}>Primary focus: drafting and packaging artefacts.</div><div style={{ marginTop: 6, fontSize: 12, color: 'var(--t3)' }}>Current artefacts: {teamArtefacts.length}. Prioritize SITREP quality before submission.</div></Card>;
+  }
+  if (seat === 'liaison') {
+    return <Card><Mono color='var(--accent)'>Liaison view</Mono><div style={{ marginTop: 6, fontSize: 13 }}>Primary focus: external coordination and handoffs.</div><div style={{ marginTop: 6, fontSize: 12, color: 'var(--t3)' }}>Latest inject: {selected ? selected.title : 'none yet'}. Check cross-team dependencies before logging action.</div></Card>;
+  }
+  return <Card><Mono color='var(--accent)'>EOC Lead view</Mono><div style={{ marginTop: 6, fontSize: 13 }}>Primary focus: decisions and escalation posture.</div><div style={{ marginTop: 6, fontSize: 12, color: 'var(--t3)' }}>Decision entries logged: {teamActions.length}. Ensure major decisions include who was consulted.</div></Card>;
 }
 
-Object.assign(window, { Design });
+Object.assign(window, { Live });
