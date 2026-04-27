@@ -26,7 +26,9 @@ function PreflightView() {
       <Card style={{ textAlign: 'left' }}>
         <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 8 }}>Use link params to preview role-specific access (prototype only):</div>
         <Mono>...?role=facilitator</Mono><br />
-        <Mono>...?role=participant&team=t2</Mono><br />
+        <Mono>...?role=participant&team=t2&seat=eoc_lead</Mono><br />
+        <Mono>...?role=participant&team=t2&seat=deputy</Mono><br />
+        <Mono>...?role=participant&team=t2&seat=liaison</Mono><br />
         <Mono>...?role=observer</Mono>
       </Card>
       <div style={{ height: 16 }} />
@@ -130,6 +132,7 @@ function ParticipantOps() {
   const selected = scenario.injects.find(i => i.id === (selectedId || feed[feed.length - 1]?.id));
   const teamActions = derived.actions.filter(a => a.teamId === teamId).slice().reverse();
   const teamArtefacts = derived.artefacts.filter(a => a.teamId === teamId).slice().reverse();
+  const seat = me.seat || 'eoc_lead';
 
   const renderStimulus = (inj) => {
     if (!inj) return <Empty>Waiting for first inject.</Empty>;
@@ -161,6 +164,8 @@ function ParticipantOps() {
     </aside>
 
     <main style={{ padding: 20, overflowY: 'auto' }}>
+      <RolePanel seat={seat} selected={selected} teamActions={teamActions} teamArtefacts={teamArtefacts} />
+      <div style={{ height: 12 }} />
       {renderStimulus(selected)}
       <div style={{ height: 14 }} />
       <Section label='Log what you did (no scoring)'><textarea value={actionText} onChange={e => setActionText(e.target.value)} placeholder='What did your team decide/do?' style={pInput} /><input value={consulted} onChange={e => setConsulted(e.target.value)} placeholder='Optional: who was consulted?' style={pText} /><Btn variant='primary' onClick={() => { if (actionText.trim() && selected) { logAction(teamId, selected.id, me.name || 'Participant', actionText.trim(), consulted.trim()); setActionText(''); setConsulted(''); } }}>Save action log</Btn></Section>
@@ -195,5 +200,15 @@ function ObserverOps() {
 
 const pInput = { width: '100%', minHeight: 90, background: 'var(--elev)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--t1)', padding: 8, boxSizing: 'border-box' };
 const pText = { width: '100%', background: 'var(--elev)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--t1)', padding: 8, boxSizing: 'border-box', margin: '8px 0' };
+
+function RolePanel({ seat, selected, teamActions, teamArtefacts }) {
+  if (seat === 'deputy') {
+    return <Card><Mono color='var(--accent)'>Deputy view</Mono><div style={{ marginTop: 6, fontSize: 13 }}>Primary focus: drafting and packaging artefacts.</div><div style={{ marginTop: 6, fontSize: 12, color: 'var(--t3)' }}>Current artefacts: {teamArtefacts.length}. Prioritize SITREP quality before submission.</div></Card>;
+  }
+  if (seat === 'liaison') {
+    return <Card><Mono color='var(--accent)'>Liaison view</Mono><div style={{ marginTop: 6, fontSize: 13 }}>Primary focus: external coordination and handoffs.</div><div style={{ marginTop: 6, fontSize: 12, color: 'var(--t3)' }}>Latest inject: {selected ? selected.title : 'none yet'}. Check cross-team dependencies before logging action.</div></Card>;
+  }
+  return <Card><Mono color='var(--accent)'>EOC Lead view</Mono><div style={{ marginTop: 6, fontSize: 13 }}>Primary focus: decisions and escalation posture.</div><div style={{ marginTop: 6, fontSize: 12, color: 'var(--t3)' }}>Decision entries logged: {teamActions.length}. Ensure major decisions include who was consulted.</div></Card>;
+}
 
 Object.assign(window, { Live });

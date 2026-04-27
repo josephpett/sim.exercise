@@ -72,11 +72,11 @@ function ShellInner({ mode, setMode }) {
 
   // Hydrate persisted role
   useEffect(() => {
-    setMe({ role: savedRole, name: savedRole === 'facilitator' ? 'Exercise Director' : savedRole === 'observer' ? 'Dr. Mensah (Eval)' : scenario.teams.find(t => t.id === savedTeam)?.lead, teamId: savedTeam });
+    setMe(prev => ({ ...prev, role: savedRole, name: savedRole === 'facilitator' ? 'Exercise Director' : savedRole === 'observer' ? 'Dr. Mensah (Eval)' : scenario.teams.find(t => t.id === savedTeam)?.lead, teamId: savedTeam }));
   }, []);
 
   const setRole = (role, teamId) => {
-    const newMe = { role, name: role === 'facilitator' ? 'Exercise Director' : role === 'observer' ? 'Dr. Mensah (Eval)' : scenario.teams.find(t => t.id === (teamId || me.teamId))?.lead, teamId: teamId || me.teamId };
+    const newMe = { ...me, role, name: role === 'facilitator' ? 'Exercise Director' : role === 'observer' ? 'Dr. Mensah (Eval)' : scenario.teams.find(t => t.id === (teamId || me.teamId))?.lead, teamId: teamId || me.teamId };
     setMe(newMe);
     localStorage.setItem('sx.role', role);
     if (teamId) localStorage.setItem('sx.team', teamId);

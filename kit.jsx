@@ -89,6 +89,7 @@ function StoreProvider({ children }) {
   const params = new URLSearchParams(window.location.search);
   const seededRole = params.get('role') || 'facilitator';
   const seededTeam = params.get('team') || 't1';
+  const seededSeat = params.get('seat') || 'eoc_lead';
   const [scenario, setScenario] = useState(baseScenario);
   const [scenarioLibrary, setScenarioLibrary] = useState(scenarioLibrarySeed);
   const [state, setState] = useState('idle');
@@ -96,7 +97,7 @@ function StoreProvider({ children }) {
   const [speed, setSpeed] = useState(1);
   const [events, setEvents] = useState([]);
   const [scrubT, setScrubT] = useState(null);
-  const [me, setMe] = useState({ role: seededRole, teamId: seededTeam, name: seededRole === 'facilitator' ? 'Exercise Director' : 'Participant', access: 'magic-link-mock' });
+  const [me, setMe] = useState({ role: seededRole, teamId: seededTeam, seat: seededSeat, name: seededRole === 'facilitator' ? 'Exercise Director' : 'Participant', access: 'magic-link-mock' });
 
   const timerRef = useRef(null);
   const derived = useMemo(() => deriveFrom(scenario, events), [scenario, events]);
