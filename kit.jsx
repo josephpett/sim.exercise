@@ -38,7 +38,11 @@ function normalizeScenario(raw) {
       objs: Array.isArray(inj.objs) ? inj.objs : [],
       planRefs: Array.isArray(inj.planRefs) ? inj.planRefs : [],
     })),
-    teams: Array.isArray(raw.teams) ? raw.teams : baseScenario.teams,
+    teams: Array.isArray(raw.teams) ? raw.teams.map((t, idx) => ({
+      ...baseScenario.teams[idx % baseScenario.teams.length],
+      ...t,
+      roles: Array.isArray(t.roles) ? t.roles : (baseScenario.teams[idx % baseScenario.teams.length].roles || []),
+    })) : baseScenario.teams,
     phases: Array.isArray(raw.phases) ? raw.phases : baseScenario.phases,
     objectives: Array.isArray(raw.objectives) ? raw.objectives : baseScenario.objectives,
   };
@@ -100,6 +104,7 @@ const scenarioLibrarySeed = [
 
 const baseScenario = {
   ...scenarioLibrarySeed[0],
+  targetDurationMin: 90,
   phases: [
     { id: 'p1', name: 'Detection', start: 0, hue: 195 },
     { id: 'p2', name: 'Escalation', start: 900, hue: 25 },
@@ -107,10 +112,10 @@ const baseScenario = {
     { id: 'p4', name: 'Recovery', start: 3300, hue: 145 },
   ],
   teams: [
-    { id: 't1', name: 'Surveillance Unit', lead: 'Dr. Mensah', hue: 195 },
-    { id: 't2', name: 'Operations Cell', lead: 'A. Patel', hue: 25 },
-    { id: 't3', name: 'Risk Comms Team', lead: 'L. Chen', hue: 280 },
-    { id: 't4', name: 'Border Health', lead: 'R. Alvarez', hue: 145 },
+    { id: 't1', name: 'Surveillance Unit', lead: 'Dr. Mensah', hue: 195, roles: ['Lead', 'Deputy', 'Data officer'] },
+    { id: 't2', name: 'Operations Cell', lead: 'A. Patel', hue: 25, roles: ['Lead', 'Planning', 'Logistics'] },
+    { id: 't3', name: 'Risk Comms Team', lead: 'L. Chen', hue: 280, roles: ['Spokesperson', 'Media liaison'] },
+    { id: 't4', name: 'Border Health', lead: 'R. Alvarez', hue: 145, roles: ['Lead', 'Point-of-entry officer'] },
   ],
   capabilities: ['Surveillance', 'Incident Mgmt', 'Lab', 'Risk Communication', 'Border Health', 'Logistics'],
   objectives: [

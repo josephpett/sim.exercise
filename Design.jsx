@@ -58,6 +58,7 @@ function Design() {
     <div style={{ display: 'flex', height: '100%' }}>
       <aside style={{ width: 68, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '14px 0', gap: 4, flexShrink: 0 }}>
         {[
+          { id: 'setup', label: 'Setup', icon: '⚙' },
           { id: 'melt', label: 'MEL', icon: '▦' },
           { id: 'rules', label: 'Auto', icon: '⇅' },
           { id: 'objectives', label: 'Goals', icon: '◎' },
@@ -65,12 +66,69 @@ function Design() {
         ].map(t => <button key={t.id} onClick={() => setTab(t.id)} style={{ width: 52, padding: '8px 0', border: 'none', background: tab === t.id ? 'var(--elev)' : 'transparent', color: tab === t.id ? 'var(--accent)' : 'var(--t3)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}><span style={{ fontSize: 18 }}>{t.icon}</span><span style={{ fontSize: 9, letterSpacing: '0.04em', textTransform: 'uppercase', fontWeight: 700 }}>{t.label}</span></button>)}
       </aside>
 
+      {tab === 'setup' && <SetupView scenario={scenario} setScenario={setScenario} />}
       {tab === 'melt' && <MELDesign {...{ scenario, selId, setSelId, addInject, del, update, sel, onPasteRow, moveCell, cellRefs }} />}
       {tab === 'rules' && <RulesView scenario={scenario} setScenario={setScenario} />}
       {tab === 'objectives' && <ObjectivesView scenario={scenario} />}
       {tab === 'library' && <LibraryView scenario={scenario} scenarioLibrary={scenarioLibrary} forkScenario={forkScenario} />}
     </div>
   );
+}
+
+function SetupView({ scenario, setScenario }) {
+  const updateScenario = (patch) => setScenario(s => ({ ...s, ...patch }));
+  const updateTeam = (id, patch) => setScenario(s => ({ ...s, teams: s.teams.map(t => t.id === id ? { ...t, ...patch } : t) }));
+  const addTeam = () => setScenario(s => ({ ...s, teams: [...s.teams, { id: `t${s.teams.length + 1}`, name: `Team ${s.teams.length + 1}`, lead: 'TBD', hue: 195 + s.teams.length * 20, roles: ['Lead'] }] }));
+  const removeTeam = (id) => setScenario(s => ({ ...s, teams: s.teams.filter(t => t.id !== id), injects: s.injects.map(i => ({ ...i, targets: i.targets.filter(tid => tid !== id) })) }));
+
+  return <div style={{ flex: 1, overflowY: 'auto', padding: 26 }}>
+    <div style={{ maxWidth: 980, margin: '0 auto', display: 'grid', gap: 14 }}>
+      <Card>
+        <h2 style={{ margin: '0 0 10px', fontSize: 18 }}>Exercise setup</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: 10 }}>
+          <Field label='Scenario title'><input value={scenario.name} onChange={e => updateScenario({ name: e.target.value })} style={inputStyle} /></Field>
+          <Field label='Exercise type'><input value={scenario.type} onChange={e => updateScenario({ type: e.target.value })} style={inputStyle} /></Field>
+          <Field label='Target length (minutes)'><input type='number' value={scenario.targetDurationMin || 90} onChange={e => updateScenario({ targetDurationMin: Number(e.target.value) || 0 })} style={inputStyle} /></Field>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <Field label='Framework / standards'><input value={scenario.framework} onChange={e => updateScenario({ framework: e.target.value })} style={inputStyle} /></Field>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <Field label='Concept summary'><textarea rows={3} value={scenario.concept} onChange={e => updateScenario({ concept: e.target.value })} style={inputStyle} /></Field>
+        </div>
+      </Card>
+
+      <Card>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
+          <h2 style={{ margin: 0, fontSize: 18 }}>Participant teams & role differentiation</h2>
+          <Btn variant='quiet' size='sm' style={{ marginLeft: 'auto' }} onClick={addTeam}>+ Add team</Btn>
+        </div>
+        <div style={{ display: 'grid', gap: 8 }}>
+          {scenario.teams.map(team => <div key={team.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--bg)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8 }}>
+              <input value={team.name} onChange={e => updateTeam(team.id, { name: e.target.value })} placeholder='Team name' style={inputStyle} />
+              <input value={team.lead} onChange={e => updateTeam(team.id, { lead: e.target.value })} placeholder='Team lead' style={inputStyle} />
+              <Btn variant='ghost' size='sm' onClick={() => removeTeam(team.id)}>Remove</Btn>
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <Field label='Roles within team (comma-separated)'>
+                <input value={(team.roles || []).join(', ')} onChange={e => updateTeam(team.id, { roles: e.target.value.split(',').map(v => v.trim()).filter(Boolean) })} placeholder='Lead, Deputy, Liaison' style={inputStyle} />
+              </Field>
+            </div>
+          </div>)}
+        </div>
+      </Card>
+
+      <Card>
+        <h2 style={{ margin: '0 0 8px', fontSize: 18 }}>Design guidance</h2>
+        <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--t2)', lineHeight: 1.6, fontSize: 13 }}>
+          <li>Set team names and roles here first; MEL target selectors will use this structure.</li>
+          <li>Use target exercise length to pace phase timings and inject schedule.</li>
+          <li>Use plan/SOP links in MEL injects to support post-exercise clause analysis.</li>
+        </ul>
+      </Card>
+    </div>
+  </div>;
 }
 
 function MELDesign({ scenario, selId, setSelId, addInject, del, update, sel, onPasteRow, moveCell, cellRefs }) {

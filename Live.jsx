@@ -22,7 +22,7 @@ function PreflightView() {
     <div style={{ maxWidth: 720, textAlign: 'center' }}>
       <Mono color='var(--accent)'>PHASE 1 ACCESS SCAFFOLD</Mono>
       <h1 style={{ fontSize: 32, margin: '10px 0 8px' }}>{scenario.name}</h1>
-      <p style={{ color: 'var(--t2)', marginBottom: 20 }}>{scenario.type} · {scenario.framework}</p>
+      <p style={{ color: 'var(--t2)', marginBottom: 20 }}>{scenario.type} · {scenario.framework} · Target {scenario.targetDurationMin || 90} min</p>
       <Card style={{ textAlign: 'left' }}>
         <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 8 }}>Access status: <strong>{me.access}</strong>{accessTokenPayload ? ` · ${accessTokenPayload.role}/${accessTokenPayload.teamId}/${accessTokenPayload.seat || 'eoc_lead'}` : ''}</div>
         <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 8 }}>Use link params to preview role-specific access (prototype scaffold):</div>
