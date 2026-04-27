@@ -43,10 +43,10 @@
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 
-<script type="text/babel" src="c/kit.jsx"></script>
-<script type="text/babel" src="c/Design.jsx"></script>
-<script type="text/babel" src="c/Live.jsx"></script>
-<script type="text/babel" src="c/Review.jsx"></script>
+<script type="text/babel" src="kit.jsx"></script>
+<script type="text/babel" src="Design.jsx"></script>
+<script type="text/babel" src="Live.jsx"></script>
+<script type="text/babel" src="Review.jsx"></script>
 
 <script type="text/babel">
 const { useState, useEffect } = React;
@@ -136,10 +136,13 @@ function TopBar({ mode, setMode, role, setRole, teamId }) {
 
       <div style={{ flex: 1 }} />
 
-      {/* Role switcher (only relevant in Live) */}
+      {/* Access model note + facilitator-only preview tool */}
       {mode === 'live' && (
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <span style={{ fontSize:10, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:'var(--t3)' }}>View as</span>
+          <span style={{ fontSize:10, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:'var(--t3)' }}>Access</span>
+          <span style={{ fontSize:11, color:'var(--t2)' }}>Magic-link/QR role entry (mocked)</span>
+          <span style={{ width:1, height:16, background:'var(--border)' }} />
+          <span style={{ fontSize:10, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:'var(--t3)' }}>Preview as (dev only)</span>
           <div style={{ display:'flex', gap:2, background:'var(--bg)', padding:3, borderRadius:7, border:'1px solid var(--border)' }}>
             {[['facilitator','Facilitator'],['participant','Participant'],['observer','Observer']].map(([id,label]) => <button key={id} onClick={() => setRole(id, teamId)} style={{ padding:'5px 10px', fontSize:11, fontWeight:600, background: role === id ? 'var(--elev)' : 'transparent', color: role === id ? 'var(--t1)' : 'var(--t3)', border:'none', borderRadius:5, cursor:'pointer', fontFamily:'inherit' }}>{label}</button>)}
           </div>
