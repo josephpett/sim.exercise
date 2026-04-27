@@ -66,7 +66,7 @@ function Design() {
       </aside>
 
       {tab === 'melt' && <MELDesign {...{ scenario, selId, setSelId, addInject, del, update, sel, onPasteRow, moveCell, cellRefs }} />}
-      {tab === 'rules' && <RulesView scenario={scenario} />}
+      {tab === 'rules' && <RulesView scenario={scenario} setScenario={setScenario} />}
       {tab === 'objectives' && <ObjectivesView scenario={scenario} />}
       {tab === 'library' && <LibraryView scenario={scenario} scenarioLibrary={scenarioLibrary} forkScenario={forkScenario} />}
     </div>
@@ -123,15 +123,26 @@ function InjectEditor({ inj, scenario, onUpdate, onClose }) {
   </aside>;
 }
 
-function RulesView({ scenario }) {
+function RulesView({ scenario, setScenario }) {
   const withRules = scenario.injects.filter(i => i.rule);
+  const candidates = scenario.injects.filter(i => !i.rule && i.type === 'conditional');
+  const updateRule = (id, patch) => setScenario(s => ({ ...s, injects: s.injects.map(i => i.id === id ? { ...i, rule: { ...(i.rule || {}), ...patch } } : i) }));
+  const addRule = (id) => updateRule(id, { trigger: 'no_ack', onInject: scenario.injects[0]?.id, byTeam: scenario.teams[0]?.id, thresholdMin: 10 });
   return <div style={{ flex: 1, overflowY: 'auto', padding: 32 }}><div style={{ maxWidth: 900, margin: '0 auto' }}>
     <h1 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 6px' }}>MEL automation for facilitators</h1>
     <p style={{ fontSize: 13, color: 'var(--t3)', margin: '0 0 28px', maxWidth: 680 }}>Automation rules support facilitator-side branching so scenarios react to team behaviour. Participants only experience realistic stimulus flow, not game-like consequences.</p>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>{withRules.map(inj => {
       const src = scenario.injects.find(i => i.id === inj.rule.onInject);
-      return <div key={inj.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 16 }}><Card><Mono>When</Mono><div style={{ fontSize: 13, marginTop: 6 }}>Inject <strong>#{src?.ord}</strong> is not logged by team <strong>{inj.rule.byTeam}</strong> within {inj.rule.thresholdMin} min.</div></Card><div style={{ color: 'var(--accent)' }}>→</div><Card style={{ borderColor: 'var(--accent)' }}><Mono color='var(--accent)'>Then trigger</Mono><div style={{ fontSize: 13, marginTop: 6 }}><strong>#{inj.ord}</strong> {inj.title}</div></Card></div>;
+      return <div key={inj.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 16 }}><Card><Mono>When</Mono><div style={{ marginTop: 8, display: 'grid', gap: 6 }}><label style={{ fontSize: 12 }}>Source inject <select value={inj.rule.onInject} onChange={e => updateRule(inj.id, { onInject: e.target.value })} style={{ ...inputStyle, marginTop: 4 }}>{scenario.injects.filter(i => i.id !== inj.id).map(i => <option key={i.id} value={i.id}>#{i.ord} {i.title}</option>)}</select></label><label style={{ fontSize: 12 }}>By team <select value={inj.rule.byTeam} onChange={e => updateRule(inj.id, { byTeam: e.target.value })} style={{ ...inputStyle, marginTop: 4 }}>{scenario.teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label><label style={{ fontSize: 12 }}>Threshold minutes <input type='number' value={inj.rule.thresholdMin} onChange={e => updateRule(inj.id, { thresholdMin: Number(e.target.value) || 0 })} style={{ ...inputStyle, marginTop: 4 }} /></label><div style={{ fontSize: 12, color: 'var(--t3)' }}>Inject <strong>#{src?.ord}</strong> not logged within {inj.rule.thresholdMin} min.</div></div></Card><div style={{ color: 'var(--accent)' }}>→</div><Card style={{ borderColor: 'var(--accent)' }}><Mono color='var(--accent)'>Then trigger</Mono><div style={{ fontSize: 13, marginTop: 6 }}><strong>#{inj.ord}</strong> {inj.title}</div></Card></div>;
     })}</div>
+    <div style={{ height: 14 }} />
+    <Card>
+      <Mono>Add automation rule</Mono>
+      <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {candidates.length === 0 && <span style={{ fontSize: 12, color: 'var(--t3)' }}>No conditional injects without rules.</span>}
+        {candidates.map(i => <Btn key={i.id} size='sm' variant='quiet' onClick={() => addRule(i.id)}>+ Rule for #{i.ord} {i.title}</Btn>)}
+      </div>
+    </Card>
   </div></div>;
 }
 

@@ -83,6 +83,16 @@ function AARReport() {
     setNarrative(await window.claude.complete(`Draft a concise post-exercise report narrative in ${template} tone using: ${summary}`));
   };
 
+  const downloadText = (filename, text, mime = 'text/plain;charset=utf-8') => {
+    const blob = new Blob([text], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const clauseRows = scenario.injects.map(i => ({
     inj: i,
     stressed: events.some(e => e.type === 'SEND' && e.injectId === i.id),
@@ -107,8 +117,8 @@ function AARReport() {
     <div style={{ height: 18 }} />
     <Section label='Export structured data'>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <Btn variant='primary' onClick={() => navigator.clipboard.writeText(exportEventsJSON())}>Copy events JSON</Btn>
-        <Btn variant='quiet' onClick={() => navigator.clipboard.writeText(exportMELCSV())}>Copy MEL CSV</Btn>
+        <Btn variant='primary' onClick={() => downloadText('simex-events.json', exportEventsJSON(), 'application/json;charset=utf-8')}>Download events JSON</Btn>
+        <Btn variant='quiet' onClick={() => downloadText('simex-mel.csv', exportMELCSV(), 'text/csv;charset=utf-8')}>Download MEL CSV</Btn>
       </div>
     </Section>
   </div></div>;

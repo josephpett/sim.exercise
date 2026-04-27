@@ -52,6 +52,7 @@ function FacilitatorOps() {
   const [trayOpen, setTrayOpen] = lUseState(false);
   const [focusTeam, setFocusTeam] = lUseState(null);
   const [paletteOpen, setPaletteOpen] = lUseState(false);
+  const [paletteCmd, setPaletteCmd] = lUseState('');
 
   const pending = scenario.injects.filter(i => !derived.sent.some(s => s.id === i.id));
   const nextUp = pending.sort((a, b) => a.scheduledT - b.scheduledT)[0];
@@ -73,6 +74,17 @@ function FacilitatorOps() {
     team: t,
     waiting: derived.sent.filter(s => scenario.injects.find(i => i.id === s.id)?.targets.includes(t.id)).length - derived.actions.filter(a => a.teamId === t.id).length,
   }));
+
+  const runCommand = () => {
+    const cmd = paletteCmd.trim().toLowerCase();
+    if (!cmd) return;
+    if (cmd === 'fire next' && nextUp) sendInject(nextUp.id);
+    else if (cmd === 'pause') pause();
+    else if (cmd === 'resume') resume();
+    else if (cmd.startsWith('focus ')) setFocusTeam(cmd.replace('focus ', 't'));
+    else if (cmd.startsWith('note ')) addNote('Facilitator', cmd.replace('note ', ''));
+    setPaletteCmd('');
+  };
 
   return <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', height: '100%' }}>
     <div style={{ padding: 20, overflowY: 'auto' }}>
@@ -97,7 +109,7 @@ function FacilitatorOps() {
 
     <aside style={{ borderLeft: '1px solid var(--border)', background: 'var(--surface)', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <Section label='Keyboard shortcuts'><Mono>Space fire · N note · P pause · 1–4 focus · / palette</Mono></Section>
-      {paletteOpen && <Card><Mono color='var(--accent)'>Command palette (prototype)</Mono><div style={{ marginTop: 8, fontSize: 12 }}>Type actions in production. Here, keyboard shortcuts are directly active.</div></Card>}
+      {paletteOpen && <Card><Mono color='var(--accent)'>Command palette</Mono><div style={{ marginTop: 8, fontSize: 12, color: 'var(--t3)' }}>Try: <Mono>fire next</Mono>, <Mono>pause</Mono>, <Mono>resume</Mono>, <Mono>focus 1</Mono>, <Mono>note ...</Mono></div><div style={{ display: 'flex', gap: 6, marginTop: 8 }}><input value={paletteCmd} onChange={e => setPaletteCmd(e.target.value)} onKeyDown={e => e.key === 'Enter' && runCommand()} placeholder='/' style={{ ...pText, margin: 0 }} /><Btn size='sm' variant='primary' onClick={runCommand}>Run</Btn></div></Card>}
       <textarea id='fac-note-input' value={noteText} onChange={e => setNoteText(e.target.value)} placeholder='N → capture facilitator note' style={{ width: '100%', minHeight: 90, background: 'var(--elev)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--t1)', padding: 8 }} />
       <Btn variant='primary' onClick={() => { if (noteText.trim()) { addNote('Facilitator', noteText.trim()); setNoteText(''); } }}>Log note</Btn>
       <Section label='Immutable log (mock)'><Mono>{derived.sent.length + derived.actions.length + derived.artefacts.length + derived.notes.length} signed events</Mono></Section>
@@ -106,7 +118,7 @@ function FacilitatorOps() {
 }
 
 function ParticipantOps() {
-  const { scenario, me, derived, logAction, addArtefact } = useStore();
+  const { scenario, me, derived, logAction, addArtefact, state } = useStore();
   const teamId = me.teamId || 't1';
   const [selectedId, setSelectedId] = lUseState(null);
   const [actionText, setActionText] = lUseState('');
@@ -128,6 +140,16 @@ function ParticipantOps() {
     if (inj.channel === 'alert') return <Card style={{ borderLeft: '4px solid var(--red)' }}><Mono>ALERT</Mono>{body}</Card>;
     return <Card><Mono>EMAIL</Mono>{body}</Card>;
   };
+
+  if (state === 'ended') {
+    return <div style={{ padding: 24, overflowY: 'auto' }}>
+      <h2 style={{ marginTop: 0 }}>Personal debrief</h2>
+      <p style={{ color: 'var(--t2)' }}>Your own decisions and outputs for self-reflection.</p>
+      <Section label='Your action log'>{teamActions.length === 0 ? <Empty>No actions logged.</Empty> : teamActions.map((a, i) => <Card key={i} style={{ marginBottom: 8 }}><Mono color='var(--accent)'>T+{fmtMMSS(a.t)}</Mono><div style={{ marginTop: 4 }}>{a.text}</div>{a.consulted && <Mono>Consulted: {a.consulted}</Mono>}</Card>)}</Section>
+      <div style={{ height: 12 }} />
+      <Section label='Your artefacts'>{teamArtefacts.length === 0 ? <Empty>No artefacts created.</Empty> : teamArtefacts.map((a, i) => <Card key={i} style={{ marginBottom: 8 }}><Mono>{a.kind}</Mono><div style={{ marginTop: 4, whiteSpace: 'pre-wrap' }}>{a.body}</div></Card>)}</Section>
+    </div>;
+  }
 
   return <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr 320px', height: '100%' }}>
     <aside style={{ borderRight: '1px solid var(--border)', overflowY: 'auto' }}>
