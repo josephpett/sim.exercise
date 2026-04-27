@@ -9,6 +9,16 @@ const LS = {
   me: 'sx.me.v1',
 };
 
+function lsGet(key) {
+  try { return window.localStorage.getItem(key); } catch { return null; }
+}
+function lsSet(key, value) {
+  try { window.localStorage.setItem(key, value); } catch {}
+}
+function lsRemove(key) {
+  try { window.localStorage.removeItem(key); } catch {}
+}
+
 function safeJSONParse(v, fallback) {
   try { return JSON.parse(v); } catch { return fallback; }
 }
@@ -116,15 +126,15 @@ function StoreProvider({ children }) {
   const seededRole = tokenPayload?.role || params.get('role') || 'facilitator';
   const seededTeam = tokenPayload?.teamId || params.get('team') || 't1';
   const seededSeat = tokenPayload?.seat || params.get('seat') || 'eoc_lead';
-  const [scenario, setScenario] = useState(() => safeJSONParse(localStorage.getItem(LS.scenario), baseScenario));
+  const [scenario, setScenario] = useState(() => safeJSONParse(lsGet(LS.scenario), baseScenario));
   const [scenarioLibrary, setScenarioLibrary] = useState(scenarioLibrarySeed);
   const [state, setState] = useState('idle');
   const [time, setTime] = useState(0);
   const [speed, setSpeed] = useState(1);
-  const [events, setEvents] = useState(() => safeJSONParse(localStorage.getItem(LS.events), []));
+  const [events, setEvents] = useState(() => safeJSONParse(lsGet(LS.events), []));
   const [scrubT, setScrubT] = useState(null);
   const [me, setMe] = useState(() => {
-    const saved = safeJSONParse(localStorage.getItem(LS.me), null);
+    const saved = safeJSONParse(lsGet(LS.me), null);
     if (saved) return saved;
     return { role: seededRole, teamId: seededTeam, seat: seededSeat, name: seededRole === 'facilitator' ? 'Exercise Director' : 'Participant', access: tokenPayload ? 'signed-link' : 'magic-link-mock' };
   });
@@ -138,9 +148,9 @@ function StoreProvider({ children }) {
     return () => clearInterval(timerRef.current);
   }, [state, speed]);
 
-  useEffect(() => { localStorage.setItem(LS.scenario, JSON.stringify(scenario)); }, [scenario]);
-  useEffect(() => { localStorage.setItem(LS.events, JSON.stringify(events)); }, [events]);
-  useEffect(() => { localStorage.setItem(LS.me, JSON.stringify(me)); }, [me]);
+  useEffect(() => { lsSet(LS.scenario, JSON.stringify(scenario)); }, [scenario]);
+  useEffect(() => { lsSet(LS.events, JSON.stringify(events)); }, [events]);
+  useEffect(() => { lsSet(LS.me, JSON.stringify(me)); }, [me]);
 
   const pushEvent = (e) => setEvents(prev => [...prev, e]);
   const start = () => { setState('live'); setTime(0); setEvents([]); setScrubT(null); };
@@ -199,7 +209,7 @@ function StoreProvider({ children }) {
     currentPhase: phaseAt(scenario.phases, time), realTime: time,
     derived, derive: deriveFrom,
     exportEventsJSON, exportMELCSV, forkScenario,
-    clearSession: () => { localStorage.removeItem(LS.events); localStorage.removeItem(LS.me); setEvents([]); },
+    clearSession: () => { lsRemove(LS.events); lsRemove(LS.me); setEvents([]); },
     accessTokenPayload: tokenPayload,
   };
 

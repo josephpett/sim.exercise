@@ -51,14 +51,17 @@
 <script type="text/babel">
 const { useState, useEffect } = React;
 
+const safeLSGet = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
+const safeLSSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+
 // Persist mode + role
-const savedMode = localStorage.getItem('sx.mode') || 'design';
-const savedRole = localStorage.getItem('sx.role') || 'facilitator';
-const savedTeam = localStorage.getItem('sx.team') || 't1';
+const savedMode = safeLSGet('sx.mode', 'design');
+const savedRole = safeLSGet('sx.role', 'facilitator');
+const savedTeam = safeLSGet('sx.team', 't1');
 
 function Shell() {
   const [mode, setMode] = useState(savedMode);
-  useEffect(() => localStorage.setItem('sx.mode', mode), [mode]);
+  useEffect(() => safeLSSet('sx.mode', mode), [mode]);
 
   return (
     <StoreProvider>
@@ -78,8 +81,8 @@ function ShellInner({ mode, setMode }) {
   const setRole = (role, teamId) => {
     const newMe = { ...me, role, name: role === 'facilitator' ? 'Exercise Director' : role === 'observer' ? 'Dr. Mensah (Eval)' : scenario.teams.find(t => t.id === (teamId || me.teamId))?.lead, teamId: teamId || me.teamId };
     setMe(newMe);
-    localStorage.setItem('sx.role', role);
-    if (teamId) localStorage.setItem('sx.team', teamId);
+    safeLSSet('sx.role', role);
+    if (teamId) safeLSSet('sx.team', teamId);
   };
 
   return (
