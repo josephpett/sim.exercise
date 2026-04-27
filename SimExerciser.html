@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>SimExerciser — WHO-aligned exercise platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       oklch(16% 0.01 240);
+    --surface:  oklch(20% 0.012 240);
+    --elev:     oklch(24% 0.013 240);
+    --border:   oklch(30% 0.012 240);
+    --t1:       oklch(96% 0.005 240);
+    --t2:       oklch(72% 0.01 240);
+    --t3:       oklch(54% 0.012 240);
+    --accent:   oklch(68% 0.16 245);
+    --red:      oklch(62% 0.2 25);
+    --amber:    oklch(76% 0.16 75);
+    --green:    oklch(68% 0.14 150);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--t1); font-family: 'Inter', system-ui, sans-serif; font-size: 14px; overflow: hidden; -webkit-font-smoothing: antialiased; }
+  #app { height: 100vh; display: flex; flex-direction: column; }
+  button { font-family: inherit; }
+  button:hover:not(:disabled) { filter: brightness(1.1); }
+  input, textarea, select { font-family: inherit; color: var(--t1); }
+  input:focus, textarea:focus, select:focus { border-color: var(--accent) !important; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--t3); }
+  @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.2); } }
+  pre { margin: 0; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="c/kit.jsx"></script>
+<script type="text/babel" src="c/Design.jsx"></script>
+<script type="text/babel" src="c/Live.jsx"></script>
+<script type="text/babel" src="c/Review.jsx"></script>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+// Persist mode + role
+const savedMode = localStorage.getItem('sx.mode') || 'design';
+const savedRole = localStorage.getItem('sx.role') || 'facilitator';
+const savedTeam = localStorage.getItem('sx.team') || 't1';
+
+function Shell() {
+  const [mode, setMode] = useState(savedMode);
+  useEffect(() => localStorage.setItem('sx.mode', mode), [mode]);
+
+  return (
+    <StoreProvider>
+      <ShellInner mode={mode} setMode={setMode} />
+    </StoreProvider>
+  );
+}
+
+function ShellInner({ mode, setMode }) {
+  const { me, setMe, state, scenario } = useStore();
+
+  // Hydrate persisted role
+  useEffect(() => {
+    setMe({ role: savedRole, name: savedRole === 'facilitator' ? 'Exercise Director' : savedRole === 'observer' ? 'Dr. Mensah (Eval)' : scenario.teams.find(t => t.id === savedTeam)?.lead, teamId: savedTeam });
+  }, []);
+
+  const setRole = (role, teamId) => {
+    const newMe = { role, name: role === 'facilitator' ? 'Exercise Director' : role === 'observer' ? 'Dr. Mensah (Eval)' : scenario.teams.find(t => t.id === (teamId || me.teamId))?.lead, teamId: teamId || me.teamId };
+    setMe(newMe);
+    localStorage.setItem('sx.role', role);
+    if (teamId) localStorage.setItem('sx.team', teamId);
+  };
+
+  return (
+    <>
+      <TopBar mode={mode} setMode={setMode} role={me.role} setRole={setRole} teamId={me.teamId} />
+      <main style={{ flex: 1, overflow: 'hidden' }}>
+        {mode === 'design' && <Design />}
+        {mode === 'live' && <Live />}
+        {mode === 'review' && <Review />}
+      </main>
+    </>
+  );
+}
+
+function TopBar({ mode, setMode, role, setRole, teamId }) {
+  const { scenario, state, time } = useStore();
+  const modes = [
+    { id: 'design', label: 'Design',   sub: 'Build scenario' },
+    { id: 'live',   label: 'Live Ops', sub: 'Run exercise' },
+    { id: 'review', label: 'Review',   sub: 'Replay & AAR' },
+  ];
+  const stateBadge = state === 'idle' ? null
+    : state === 'live' ? <span style={{ display:'inline-flex', alignItems:'center', gap:5, fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:10, background:'color-mix(in oklch, var(--red) 18%, transparent)', color:'var(--red)', letterSpacing:'0.1em' }}><Dot color="var(--red)" size={6} pulse />LIVE · {fmtT(time)}</span>
+    : state === 'paused' ? <span style={{ fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:10, background:'color-mix(in oklch, var(--amber) 18%, transparent)', color:'var(--amber)' }}>PAUSED · {fmtT(time)}</span>
+    : <span style={{ fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:10, background:'var(--elev)', color:'var(--t3)' }}>ENDED</span>;
+
+  return (
+    <div style={{ height: 54, display:'flex', alignItems:'center', padding:'0 20px', gap: 20, borderBottom:'1px solid var(--border)', background:'var(--surface)', flexShrink:0 }}>
+      {/* Brand */}
+      <div style={{ display:'flex', alignItems:'center', gap: 10 }}>
+        <div style={{ width:28, height:28, borderRadius:7, background:'linear-gradient(135deg, var(--accent), oklch(58% 0.22 285))', display:'grid', placeItems:'center', fontSize:14, fontWeight:800, color:'#fff' }}>◈</div>
+        <div>
+          <div style={{ fontSize:13, fontWeight:700, letterSpacing:'-0.01em' }}>SimExerciser</div>
+          <div style={{ fontSize:10, color:'var(--t3)', marginTop:-2 }}>WHO-aligned exercise platform</div>
+        </div>
+      </div>
+
+      <div style={{ width:1, height:28, background:'var(--border)' }} />
+
+      {/* Mode switcher */}
+      <div style={{ display:'flex', gap:2, background:'var(--bg)', padding:3, borderRadius:9, border:'1px solid var(--border)' }}>
+        {modes.map(m => <button key={m.id} onClick={() => setMode(m.id)} style={{ padding:'6px 14px', fontSize:12, fontWeight:600, background: mode === m.id ? 'var(--accent)' : 'transparent', color: mode === m.id ? '#fff' : 'var(--t2)', border:'none', borderRadius:6, cursor:'pointer', fontFamily:'inherit', display:'flex', flexDirection:'column', alignItems:'flex-start', lineHeight:1.2 }}>
+          <span>{m.label}</span>
+          <span style={{ fontSize:9, opacity:0.7, fontWeight:500 }}>{m.sub}</span>
+        </button>)}
+      </div>
+
+      {/* Scenario crumb */}
+      <div style={{ fontSize:12, color:'var(--t3)' }}>
+        <span style={{ color:'var(--t2)' }}>{scenario.name}</span>
+      </div>
+
+      {stateBadge}
+
+      <div style={{ flex: 1 }} />
+
+      {/* Role switcher (only relevant in Live) */}
+      {mode === 'live' && (
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <span style={{ fontSize:10, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:'var(--t3)' }}>View as</span>
+          <div style={{ display:'flex', gap:2, background:'var(--bg)', padding:3, borderRadius:7, border:'1px solid var(--border)' }}>
+            {[['facilitator','Facilitator'],['participant','Participant'],['observer','Observer']].map(([id,label]) => <button key={id} onClick={() => setRole(id, teamId)} style={{ padding:'5px 10px', fontSize:11, fontWeight:600, background: role === id ? 'var(--elev)' : 'transparent', color: role === id ? 'var(--t1)' : 'var(--t3)', border:'none', borderRadius:5, cursor:'pointer', fontFamily:'inherit' }}>{label}</button>)}
+          </div>
+          {role === 'participant' && (
+            <select value={teamId} onChange={e => setRole('participant', e.target.value)} style={{ fontSize:11, fontWeight:600, padding:'5px 10px', background:'var(--bg)', border:'1px solid var(--border)', borderRadius:5, color:'var(--t1)', outline:'none', cursor:'pointer' }}>
+              {scenario.teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('app')).render(<Shell />);
+</script>
+</body>
+</html>
