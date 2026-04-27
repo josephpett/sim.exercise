@@ -23,6 +23,38 @@ function safeJSONParse(v, fallback) {
   try { return JSON.parse(v); } catch { return fallback; }
 }
 
+function normalizeScenario(raw) {
+  if (!raw || typeof raw !== 'object') return baseScenario;
+  if (!Array.isArray(raw.injects) || !Array.isArray(raw.teams) || !Array.isArray(raw.phases)) return baseScenario;
+  return {
+    ...baseScenario,
+    ...raw,
+    injects: raw.injects.map((inj, idx) => ({
+      ...baseScenario.injects[0],
+      ...inj,
+      ord: inj.ord || idx + 1,
+      targets: Array.isArray(inj.targets) ? inj.targets : [],
+      caps: Array.isArray(inj.caps) ? inj.caps : [],
+      objs: Array.isArray(inj.objs) ? inj.objs : [],
+      planRefs: Array.isArray(inj.planRefs) ? inj.planRefs : [],
+    })),
+    teams: Array.isArray(raw.teams) ? raw.teams : baseScenario.teams,
+    phases: Array.isArray(raw.phases) ? raw.phases : baseScenario.phases,
+    objectives: Array.isArray(raw.objectives) ? raw.objectives : baseScenario.objectives,
+  };
+}
+
+function normalizeMe(raw, seededRole, seededTeam, seededSeat, access) {
+  if (!raw || typeof raw !== 'object') return { role: seededRole, teamId: seededTeam, seat: seededSeat, name: seededRole === 'facilitator' ? 'Exercise Director' : 'Participant', access };
+  return {
+    role: raw.role || seededRole,
+    teamId: raw.teamId || seededTeam,
+    seat: raw.seat || seededSeat,
+    name: raw.name || (seededRole === 'facilitator' ? 'Exercise Director' : 'Participant'),
+    access: raw.access || access,
+  };
+}
+
 function decodeAccessToken(raw) {
   if (!raw) return null;
   try {
@@ -126,17 +158,20 @@ function StoreProvider({ children }) {
   const seededRole = tokenPayload?.role || params.get('role') || 'facilitator';
   const seededTeam = tokenPayload?.teamId || params.get('team') || 't1';
   const seededSeat = tokenPayload?.seat || params.get('seat') || 'eoc_lead';
-  const [scenario, setScenario] = useState(() => safeJSONParse(lsGet(LS.scenario), baseScenario));
+  const [scenario, setScenario] = useState(() => normalizeScenario(safeJSONParse(lsGet(LS.scenario), baseScenario)));
   const [scenarioLibrary, setScenarioLibrary] = useState(scenarioLibrarySeed);
   const [state, setState] = useState('idle');
   const [time, setTime] = useState(0);
   const [speed, setSpeed] = useState(1);
-  const [events, setEvents] = useState(() => safeJSONParse(lsGet(LS.events), []));
+  const [events, setEvents] = useState(() => {
+    const restored = safeJSONParse(lsGet(LS.events), []);
+    return Array.isArray(restored) ? restored : [];
+  });
   const [scrubT, setScrubT] = useState(null);
   const [me, setMe] = useState(() => {
+    const access = tokenPayload ? 'signed-link' : 'magic-link-mock';
     const saved = safeJSONParse(lsGet(LS.me), null);
-    if (saved) return saved;
-    return { role: seededRole, teamId: seededTeam, seat: seededSeat, name: seededRole === 'facilitator' ? 'Exercise Director' : 'Participant', access: tokenPayload ? 'signed-link' : 'magic-link-mock' };
+    return normalizeMe(saved, seededRole, seededTeam, seededSeat, access);
   });
 
   const timerRef = useRef(null);
