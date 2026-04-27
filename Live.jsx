@@ -17,22 +17,26 @@ function Live() {
 }
 
 function PreflightView() {
-  const { scenario, start } = useStore();
+  const { scenario, start, me, accessTokenPayload, clearSession } = useStore();
   return <div style={{ height: '100%', display: 'grid', placeItems: 'center', padding: 32 }}>
     <div style={{ maxWidth: 720, textAlign: 'center' }}>
-      <Mono color='var(--accent)'>ACCESS-GATED ENTRY (MOCKED)</Mono>
+      <Mono color='var(--accent)'>PHASE 1 ACCESS SCAFFOLD</Mono>
       <h1 style={{ fontSize: 32, margin: '10px 0 8px' }}>{scenario.name}</h1>
       <p style={{ color: 'var(--t2)', marginBottom: 20 }}>{scenario.type} · {scenario.framework}</p>
       <Card style={{ textAlign: 'left' }}>
-        <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 8 }}>Use link params to preview role-specific access (prototype only):</div>
+        <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 8 }}>Access status: <strong>{me.access}</strong>{accessTokenPayload ? ` · ${accessTokenPayload.role}/${accessTokenPayload.teamId}/${accessTokenPayload.seat || 'eoc_lead'}` : ''}</div>
+        <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 8 }}>Use link params to preview role-specific access (prototype scaffold):</div>
         <Mono>...?role=facilitator</Mono><br />
         <Mono>...?role=participant&team=t2&seat=eoc_lead</Mono><br />
         <Mono>...?role=participant&team=t2&seat=deputy</Mono><br />
         <Mono>...?role=participant&team=t2&seat=liaison</Mono><br />
+        <Mono>...?access=&lt;signed-token&gt;</Mono><br />
         <Mono>...?role=observer</Mono>
       </Card>
-      <div style={{ height: 16 }} />
-      <Btn variant='primary' size='lg' onClick={start}>▶ Start exercise</Btn>
+      <div style={{ height: 16, display: 'flex', justifyContent: 'center', gap: 8 }}>
+        <Btn variant='primary' size='lg' onClick={start}>▶ Start exercise</Btn>
+        <Btn variant='quiet' size='sm' onClick={clearSession}>Reset local session</Btn>
+      </div>
     </div>
   </div>;
 }

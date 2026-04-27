@@ -3,6 +3,31 @@
 const { createContext, useContext, useEffect, useMemo, useRef, useState } = React;
 
 const StoreCtx = createContext(null);
+const LS = {
+  scenario: 'sx.scenario.v1',
+  events: 'sx.events.v1',
+  me: 'sx.me.v1',
+};
+
+function safeJSONParse(v, fallback) {
+  try { return JSON.parse(v); } catch { return fallback; }
+}
+
+function decodeAccessToken(raw) {
+  if (!raw) return null;
+  try {
+    const [payloadB64, sig] = raw.split('.');
+    if (!payloadB64 || !sig) return null;
+    const json = atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/'));
+    const payload = JSON.parse(json);
+    if (!payload.role || !payload.teamId) return null;
+    const expectedSig = btoa(`${payload.role}:${payload.teamId}:${payload.seat || 'eoc_lead'}`).replace(/=/g, '');
+    if (sig !== expectedSig) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
 
 const scenarioLibrarySeed = [
   {
@@ -87,17 +112,22 @@ function phaseAt(phases, t) {
 
 function StoreProvider({ children }) {
   const params = new URLSearchParams(window.location.search);
-  const seededRole = params.get('role') || 'facilitator';
-  const seededTeam = params.get('team') || 't1';
-  const seededSeat = params.get('seat') || 'eoc_lead';
-  const [scenario, setScenario] = useState(baseScenario);
+  const tokenPayload = decodeAccessToken(params.get('access'));
+  const seededRole = tokenPayload?.role || params.get('role') || 'facilitator';
+  const seededTeam = tokenPayload?.teamId || params.get('team') || 't1';
+  const seededSeat = tokenPayload?.seat || params.get('seat') || 'eoc_lead';
+  const [scenario, setScenario] = useState(() => safeJSONParse(localStorage.getItem(LS.scenario), baseScenario));
   const [scenarioLibrary, setScenarioLibrary] = useState(scenarioLibrarySeed);
   const [state, setState] = useState('idle');
   const [time, setTime] = useState(0);
   const [speed, setSpeed] = useState(1);
-  const [events, setEvents] = useState([]);
+  const [events, setEvents] = useState(() => safeJSONParse(localStorage.getItem(LS.events), []));
   const [scrubT, setScrubT] = useState(null);
-  const [me, setMe] = useState({ role: seededRole, teamId: seededTeam, seat: seededSeat, name: seededRole === 'facilitator' ? 'Exercise Director' : 'Participant', access: 'magic-link-mock' });
+  const [me, setMe] = useState(() => {
+    const saved = safeJSONParse(localStorage.getItem(LS.me), null);
+    if (saved) return saved;
+    return { role: seededRole, teamId: seededTeam, seat: seededSeat, name: seededRole === 'facilitator' ? 'Exercise Director' : 'Participant', access: tokenPayload ? 'signed-link' : 'magic-link-mock' };
+  });
 
   const timerRef = useRef(null);
   const derived = useMemo(() => deriveFrom(scenario, events), [scenario, events]);
@@ -107,6 +137,10 @@ function StoreProvider({ children }) {
     timerRef.current = setInterval(() => setTime(t => t + speed), 1000);
     return () => clearInterval(timerRef.current);
   }, [state, speed]);
+
+  useEffect(() => { localStorage.setItem(LS.scenario, JSON.stringify(scenario)); }, [scenario]);
+  useEffect(() => { localStorage.setItem(LS.events, JSON.stringify(events)); }, [events]);
+  useEffect(() => { localStorage.setItem(LS.me, JSON.stringify(me)); }, [me]);
 
   const pushEvent = (e) => setEvents(prev => [...prev, e]);
   const start = () => { setState('live'); setTime(0); setEvents([]); setScrubT(null); };
@@ -165,6 +199,8 @@ function StoreProvider({ children }) {
     currentPhase: phaseAt(scenario.phases, time), realTime: time,
     derived, derive: deriveFrom,
     exportEventsJSON, exportMELCSV, forkScenario,
+    clearSession: () => { localStorage.removeItem(LS.events); localStorage.removeItem(LS.me); setEvents([]); },
+    accessTokenPayload: tokenPayload,
   };
 
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
