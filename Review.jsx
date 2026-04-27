@@ -98,11 +98,29 @@ function AARReport() {
     stressed: events.some(e => e.type === 'SEND' && e.injectId === i.id),
     evidenced: events.some(e => (e.type === 'ACTION' || e.type === 'ARTEFACT') && e.injectId === i.id),
   }));
+  const lessons = [{ theme: 'Comms approval delay', owner: 'Comms Lead', due: '30 days', status: 'Open' }];
+
+  const buildReportMarkdown = () => {
+    const clauses = clauseRows.map(r => `- #${r.inj.ord} ${r.inj.title}\n  - Plan refs: ${(r.inj.planRefs || []).join(', ') || 'None'}\n  - Stressed: ${r.stressed ? 'Yes' : 'No'}\n  - Evidence captured: ${r.evidenced ? 'Yes' : 'No'}`).join('\n');
+    const lessonText = lessons.map(l => `- ${l.theme} (Owner: ${l.owner}, Due: ${l.due}, Status: ${l.status})`).join('\n');
+    return `# ${template} Post Exercise Report\n\n## Scenario\n- Name: ${scenario.name}\n- Duration: ${fmtT(realTime)}\n- Injects sent: ${stats.totalSent}\n- Action logs: ${stats.totalActions}\n- Artefacts: ${stats.totalArtefacts}\n\n## Narrative Summary\n${narrative || 'Narrative not generated yet.'}\n\n## Lessons Identified\n${lessonText}\n\n## Plan-Clause Analysis\n${clauses}\n\n## Notes\n${derived.notes.map(n => `- T+${fmtMMSS(n.t)} ${n.by}: ${n.text}`).join('\n') || '- None'}\n`;
+  };
+
+  const buildEvidenceBundle = () => JSON.stringify({
+    template,
+    generatedAt: new Date().toISOString(),
+    scenario: { name: scenario.name, framework: scenario.framework, duration: fmtT(realTime) },
+    stats,
+    narrative,
+    lessons,
+    clauseRows: clauseRows.map(r => ({ ord: r.inj.ord, title: r.inj.title, planRefs: r.inj.planRefs || [], stressed: r.stressed, evidenced: r.evidenced })),
+    events: JSON.parse(exportEventsJSON()),
+  }, null, 2);
 
   return <div style={{ flex: 1, overflowY: 'auto', padding: 32 }}><div style={{ maxWidth: 900, margin: '0 auto' }}>
     <h1 style={{ marginTop: 0 }}>Templated Post Exercise Report</h1>
     <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>{['WHO SimEx', 'NHS England', 'OCHA'].map(t => <button key={t} onClick={() => setTemplate(t)} style={{ padding: '5px 10px', border: '1px solid var(--border)', borderRadius: 6, background: template === t ? 'var(--accent)' : 'var(--elev)', color: template === t ? '#fff' : 'var(--t2)' }}>{t}</button>)}<Btn size='sm' variant='quiet' onClick={generate}>Generate AI narrative</Btn></div>
-    <Card><Mono color='var(--accent)'>{template} template preview (export stub)</Mono><div style={{ marginTop: 8, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{narrative || 'Generate narrative to populate this section.'}</div></Card>
+    <Card><Mono color='var(--accent)'>{template} template preview</Mono><div style={{ marginTop: 8, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{narrative || 'Generate narrative to populate this section.'}</div><div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}><Btn size='sm' variant='primary' onClick={() => downloadText(`simex-${template.toLowerCase().replace(/\\s+/g, '-')}-report.md`, buildReportMarkdown(), 'text/markdown;charset=utf-8')}>Download report (.md)</Btn><Btn size='sm' variant='quiet' onClick={() => downloadText('simex-evidence-bundle.json', buildEvidenceBundle(), 'application/json;charset=utf-8')}>Download evidence bundle</Btn></div></Card>
 
     <div style={{ height: 18 }} />
     <Section label='Lessons Identified → Lessons Learned tracker (single-exercise prototype)'>
